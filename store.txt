@@ -1,0 +1,2 @@
+contigous array
+ checkSubarraySum
