@@ -299,7 +299,7 @@ def find_dish(gray8, iters=4, inlier_px=6.0, n_candidates=8, confident_coverage=
     return W // 2, H // 2, int(0.46 * H)
 
 
-def select_discriminative_bands(cube, cx, cy, r, k=5, min_gap=5,
+def select_discriminative_bands(cube, cx, cy, r, k=7, min_gap=20,
                                 dish_ann=(0.90, 0.99), wood_ann=(1.03, 1.25),
                                 sat_frac=0.95):
     """Top-k spectral bands where the dish is most distinguishable from wood.
@@ -313,10 +313,24 @@ def select_discriminative_bands(cube, cx, cy, r, k=5, min_gap=5,
     raw difference but saturate in the dish annulus (clipped at 4095), which
     inflates their apparent contrast without being usable -- Fisher, plus an
     explicit saturation exclusion, correctly ranks the true best band (~158,
-    diff 931 vs the mean-image's 601) above them. A minimum index gap between
-    picks avoids choosing several literally-adjacent (highly correlated)
-    bands, so a later majority vote has some real independence against a
-    band-local sensor defect instead of just re-measuring one signal k times.
+    diff 931 vs the mean-image's 601) above them.
+
+    min_gap=20 (not 5): verified against ground-truth dish/wood patches (hand
+    -picked plastic and wood boxes, not the annulus samples) that the entire
+    plastic-vs-wood separability lives in ONE ~20-band-wide window (~153-173)
+    -- there's no second peak of comparable strength anywhere else in the 224
+    bands. min_gap=5 let 3 of 5 picks land inside that single window, so they
+    were never independent evidence, just correlated re-measurements of one
+    underlying feature -- confirmed by consensus_dish actually splitting into
+    two clusters (158/168 agreeing exactly at r=291 vs 153/163/173 clustering
+    at r=287-288) while still reporting a falsely-tight spread=6px (max
+    distance from the median, which lands inside the majority cluster by
+    chance and can't detect this kind of split). Widening to min_gap=20 (with
+    k=7) forces picks from genuinely separate parts of the spectrum and
+    empirically produced TIGHTER agreement (spread 6.0px -> 3.0px) at a
+    different, presumably more correct answer (r=291, not 288) -- i.e. the
+    min_gap=5 "majority" was the less representative subset, not the more
+    trustworthy one.
 
     Polarity matters: _rim_points only looks for a bright->dark drop going
     outward (white plastic -> dark groove), so a band where the dish reads
@@ -446,7 +460,7 @@ def cutout_mask(gray8, cx, cy, r):
     return cv2.morphologyEx(mask, cv2.MORPH_OPEN, k)
 
 
-def build_grid(gray8, cube=None, band_k=5, agree_px=10.0):
+def build_grid(gray8, cube=None, band_k=7, agree_px=10.0):
     """Build the cutout lattice. Returns (cells, meta). See module docstring.
 
     `cube` (optional): the full multi-band cube backing `gray8`. When given,
