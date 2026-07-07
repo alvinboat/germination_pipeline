@@ -23,9 +23,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-# hsi_save_load lives in ./loadstich (the module's own import path assumes a wider
+# hsi_save_load lives in ../loadstich (the module's own import path assumes a wider
 # jarvis_gui package that is not present in this checkout, so import it locally).
-sys.path.insert(0, str(Path(__file__).resolve().parent / "loadstich"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "loadstich"))
 from hsi_save_load import load_hsi  # noqa: E402
 
 WIDTH = 640       # spatial pixels per line

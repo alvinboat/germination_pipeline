@@ -6,15 +6,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Tooling and captured data for hyperspectral imaging (HSI) with a Specim push-broom
 line-scan camera. There is no build system, test suite, or dependency manifest — it is
-a small set of NumPy scripts plus raw capture directories.
+a small set of NumPy/OpenCV/matplotlib scripts plus raw capture directories.
 
-- `loadstich/` — Python modules for unpacking/repacking Mono12Packed data and stitching per-line captures into a hypercube.
-- `07012026/` — raw capture data (one directory per acquisition; large binaries, not code).
+- `loadstich/` — packing codec + `SpecimStitcher` class for unpacking/repacking Mono12Packed data and stitching per-line captures into a hypercube.
+- `pipeline/` — script-based stitch → dark-subtract → white-correct → geometry-correct chain that turns a raw capture dir into the corrected cube `grid/` consumes.
+- `grid/` — detects the petri-dish + per-kernel cutout grid on a corrected cube and renders the labelled overlay.
+- `kernels/` — manual kernel-outline workflow: read off coordinates, record outlines, rasterize + plot per-kernel spectra. Includes an interactive lasso/polygon alternative to hand-picked coordinates.
+- `white_exploration/` — R&D scripts behind `pipeline/white_correction.py`'s tape-blob extraction; kept for reference, not part of the run path.
+- `07012026/` — raw capture data (one directory per acquisition; large binaries, not code; gitignored).
 
-The only third-party dependency is `numpy`.
+Third-party dependencies: `numpy`, `Pillow`, `opencv-python`, `matplotlib`.
 
 ## Architecture
 
+### Radiometric/geometric pipeline (`pipeline/`)
+Each stage is a standalone script; run in order, each consuming the previous stage's
+output cube (or a raw capture dir directly):
+1. `stitch_grain.py` — stitches a directory of per-line `.bin` captures into a `(width, n_lines, channels)` uint16 cube. Non-destructive (unlike `SpecimStitcher`, it does not delete source files). Reuses `loadstich/hsi_save_load.load_hsi` via a `sys.path` shim.
+2. `correction.py` — dark-current subtraction: `clip(raw - mean(dark_lines), 0)`. Produces `*_darksub_cube.npy`.
+3. `white_correction.py` — flat-field correction using two in-scene teflon-tape blobs (no dedicated white capture exists for reflectance mode): `darksub / median(tape_blob) * SATURATION` per band. The blob-extraction approach is documented in `white_exploration/`. Produces `*_whitecorr_cube.npy`.
+4. `generate_viable_reflectance.py` — corrects the push-broom scan-axis stretch using a checkerboard target (anisotropic rescale only). Produces `*_corrected_cube.npy` — the default input `grid/detect_grid.py` expects.
+
+### Grid detection (`grid/`)
+- `detect_grid.py` — locates the dish + rim on a corrected cube, regenerates a full pitch/phase cell lattice (so cells clipped by the rim or hidden under a marker still get placed), flags each cell usable/clipped/marker-occupied, and writes `<name>_grid_overlay.png` (dish circle + labelled cells) and `<name>_grid_cells.json` (per-cell corners/center/flags).
+- `stress_test_grid.py` — stress-tests `build_grid`'s robustness against `detect_grid.py`'s own detection functions.
+
+### Manual kernel workflow (`kernels/`)
+- `grid_overlay.py` — renders a cube with a labelled pixel-coordinate grid so kernel corners can be read off by eye (unrelated to `grid/detect_grid.py` despite the similar name/output).
+- `kernels.py` — `KERNELS` list of hand-picked `(x, y)` outlines, built from `grid_overlay.py`'s coordinates.
+- `analyze_kernels.py` — rasterizes outlines from a `.py`/`.json` file into masks, then plots mean ± std spectra per kernel. Used for transmittance QC (confirming light actually passes through a kernel).
+- `segment_kernels.py` — shared `display_band` helper (used by the two scripts above) plus `KernelSegmenter`, an interactive lasso/polygon alternative that traces kernels by mouse instead of hand-coding coordinates.
+
+### `loadstich/` — packing codec + class-based stitcher
 The pipeline turns a directory of individual scan **lines** into a single stitched
 hyperspectral cube.
 
@@ -55,7 +78,7 @@ the ones loaded with `dark=True`.
 
 ## Running
 
-There is no CLI entry point. Use the class directly, e.g.:
+`loadstich/specim_stitcher.py` has no CLI entry point; use the class directly, e.g.:
 
 ```python
 from specim_stitcher import SpecimStitcher   # local import (see gotcha above)
@@ -63,4 +86,21 @@ SpecimStitcher(load_path="07012026/grain_ref_exp_2500",
                save_path="out", dark=False).load_lines()
 ```
 
-Remember `load_lines()` deletes the source directory's contents on success.
+Remember `load_lines()` deletes the source directory's contents on success — prefer
+`pipeline/stitch_grain.py` (non-destructive) unless you specifically want the packed
+`SpecimStitcher` output.
+
+Everything under `pipeline/`, `grid/`, and `kernels/` is a standalone script with
+`argparse --help`. Typical end-to-end run from the repo root:
+
+```bash
+python3 pipeline/stitch_grain.py            # 07012026/*/  -> 07012026/stitched/*_cube.npy
+python3 pipeline/correction.py              # -> *_darksub_cube.npy
+python3 pipeline/white_correction.py        # -> *_whitecorr_cube.npy
+python3 pipeline/generate_viable_reflectance.py  # -> *_corrected_cube.npy
+python3 grid/detect_grid.py                 # -> *_grid_overlay.png, *_grid_cells.json
+
+python3 kernels/grid_overlay.py <cube>      # read off (x, y) kernel coordinates
+# hand-edit kernels/kernels.py with those coordinates, then:
+python3 kernels/analyze_kernels.py <cube> kernels/kernels.py --save-mask
+```
