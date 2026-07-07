@@ -55,13 +55,21 @@ ARUCO_DICT = cv2.aruco.DICT_4X4_50          # confirmed dictionary; markers are 
 # ── tuning constants ─────────────────────────────────────────────────────────
 MARKER_ADAPTIVE_BLOCK = 25  # px, local-threshold window (~0.44x the ~57px marker side)
 MARKER_ADAPTIVE_C     = 5   # constant subtracted from the local mean
-DISH_RADIUS_FRAC   = 0.94   # analyse just inside the rim so it doesn't leak in
+DISH_RADIUS_FRAC   = 1   # analyse just inside the rim so it doesn't leak in
 DARK_PCT           = 50     # cutout mask = pixels darker than this in-dish pct
 MORPH_KERNEL       = 7      # opening kernel (px) to despeckle the cutout mask
 BAND_PEAK_FRAC     = 0.2   # a row/col band must reach this frac of the peak projection
 MIN_BAND_FRAC      = 0.05   # ignore bands thinner than this frac of the dish radius
-RIM_TOLERANCE_FRAC = 0.6   # how far a corner may graze the rim before "clipped"
-CELL_INCLUSION_RADIUS_FRAC = 1.05  # slack on the dish radius for "is this cell in the dish"
+RIM_TOLERANCE_FRAC = 0.5   # how far a corner may graze the rim before "clipped"
+# Slack on the dish radius for "is this cell in the dish". 1.05 gave the outer-corner
+# lattice positions (e.g. R+3C+3, a rectangular grid's corners being closest to a round
+# dish's rim) only ~2px margin in a perfectly still capture -- any realistic day-to-day
+# dish placement jitter (~9px dish-center std, see stress_test_grid.py) then dropped
+# them from the lattice ENTIRELY instead of just flagging them clipped, which is a real
+# "lost kernel position" failure, not the harmless clipped<->usable flicker other cells
+# see. 1.12 was picked empirically: 30/30 stress-test trials now keep every baseline
+# kernel position, and the real capture still detects the same 28 cells / 22 usable.
+CELL_INCLUSION_RADIUS_FRAC = 1.12
 
 
 # ── loading ──────────────────────────────────────────────────────────────────

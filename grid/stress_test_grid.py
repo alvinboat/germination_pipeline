@@ -10,6 +10,12 @@ approximates what will actually change between scans:
     - brightness/contrast   illumination / exposure drift
     - gaussian noise        sensor noise
 
+The camera/belt is fixed; only the dish's own placement varies, so rotation and
+translation are two independent degrees of freedom of the DISH, not of the
+frame -- perturb() pivots the rotation on the baseline dish center (not the
+image center) so a "rotation" trial doesn't also drag the dish sideways as a
+side effect of a mismatched pivot.
+
 and re-runs build_grid() + label_cells() on every variant. The invariant that
 actually matters for tracking kernels across days is not "usable count" (a
 cell can legitimately flip clipped<->usable near the rim) but:
@@ -33,13 +39,25 @@ import numpy as np
 from detect_grid import DEFAULT_CUBE, build_grid, label_cells, load_gray
 
 
-def perturb(gray8, rng, max_rot, max_shift, max_contrast, max_bright, max_noise):
-    """Apply one random rotation+shift+brightness/contrast+noise draw to gray8."""
+def perturb(gray8, rng, max_rot, max_shift, max_contrast, max_bright, max_noise, center=None):
+    """Apply one random rotation+shift+brightness/contrast+noise draw to gray8.
+
+    center: pivot for the rotation, in (x, y) image coords -- pass the baseline
+    dish center here, not the image center. The camera/belt is fixed; only the
+    dish's own placement (its angle and position) varies day to day, so the
+    rotation must pivot on the dish's own center. Pivoting on the image center
+    instead (the dish sits ~49px off it on grain_ref_exp_2500) drags the whole
+    dish sideways as a side effect of "rotation" alone -- e.g. +2.6px at the
+    default 3 degree max -- conflating the two perturbations this function is
+    meant to vary independently.
+    """
     H, W = gray8.shape
+    if center is None:
+        center = (W / 2, H / 2)
     angle = rng.uniform(-max_rot, max_rot)
     dx = rng.uniform(-max_shift, max_shift)
     dy = rng.uniform(-max_shift, max_shift)
-    M = cv2.getRotationMatrix2D((W / 2, H / 2), angle, 1.0)
+    M = cv2.getRotationMatrix2D(center, angle, 1.0)
     M[0, 2] += dx
     M[1, 2] += dy
     warped = cv2.warpAffine(gray8, M, (W, H), borderMode=cv2.BORDER_REPLICATE)
@@ -53,20 +71,26 @@ def perturb(gray8, rng, max_rot, max_shift, max_contrast, max_bright, max_noise)
 
 
 def run_once(gray8):
-    """build_grid + label_cells -> (n_usable, usable_label_set, meta) or None on failure.
+    """build_grid + label_cells -> (all_labels, usable_labels, meta) or None on failure.
 
-    "Usable" (not clipped, not marker-occupied) is the ground-truth invariant: a
-    clipped cell isn't a real kernel position (it's a lattice position the rim
-    or frame partially cuts), so it flickering in/out under perturbation is
-    expected and harmless. Only usable-cell identity must be stable.
+    Tracks every kernel-slot cell's label, clipped or not -- not just the usable
+    subset (that was the bug: a cell flipping clipped<->usable near the rim is
+    documented above as expected and harmless, but comparing only the usable set
+    treated that exact flip as a failure). What actually has to hold:
+      - no label present in the baseline's full lattice may vanish entirely
+        (a physical kernel position lost, not just downgraded to clipped)
+      - no label may appear as usable that wasn't even a valid baseline
+        position (a mislabelled / lattice-scrambled cell)
+    A cell moving between usable and clipped satisfies both and is not a failure.
     """
     try:
         cells, meta = build_grid(gray8)
     except SystemExit as e:
         return None, str(e)
     label_cells(cells, meta)
-    usable = frozenset(c["label"] for c in cells if not c["clipped"] and c["marker_id"] is None)
-    return (len(usable), usable, meta), None
+    all_labels = frozenset(c["label"] for c in cells if c["marker_id"] is None)
+    usable_labels = frozenset(c["label"] for c in cells if not c["clipped"] and c["marker_id"] is None)
+    return (all_labels, usable_labels, meta), None
 
 
 def main():
@@ -88,17 +112,20 @@ def main():
     base_result, base_err = run_once(gray8)
     if base_result is None:
         sys.exit(f"baseline detection itself failed: {base_err}")
-    base_n, base_labels, base_meta = base_result
-    print(f"Baseline cells: {base_n}  dish {base_meta['dish']}  "
-          f"rotation {base_meta['angle_deg']}°  labels {len(base_labels)}")
+    base_all, base_usable, base_meta = base_result
+    print(f"Baseline: {len(base_all)} lattice positions, {len(base_usable)} usable  "
+          f"dish {base_meta['dish']}  rotation {base_meta['angle_deg']}°")
 
     rng = np.random.default_rng(args.seed)
-    n_ok = n_count_mismatch = n_label_mismatch = n_hard_fail = 0
+    n_ok = n_lost = n_spurious = n_hard_fail = 0
+    n_flicker = 0  # informational only: usable<->clipped flips, not a failure
     dish_centers, radii, rotations = [], [], []
+    dish_center = tuple(base_meta["dish"][:2])
 
     for t in range(1, args.trials + 1):
         pert_gray, params = perturb(gray8, rng, args.max_rot, args.max_shift,
-                                     args.max_contrast, args.max_bright, args.max_noise)
+                                     args.max_contrast, args.max_bright, args.max_noise,
+                                     center=dish_center)
         result, err = run_once(pert_gray)
         tag = (f"rot={params['angle']:+.2f} shift=({params['dx']:+.1f},{params['dy']:+.1f}) "
                f"contrast={params['contrast']:.2f} bright={params['bright']:+.1f}")
@@ -106,30 +133,36 @@ def main():
             n_hard_fail += 1
             print(f"  [{t:2d}] HARD FAIL ({err})  {tag}")
             continue
-        n, labels, meta = result
+        all_labels, usable_labels, meta = result
         cx, cy, r = meta["dish"]
         dish_centers.append((cx, cy))
         radii.append(r)
         rotations.append(meta["angle_deg"])
-        missing = base_labels - labels
-        extra = labels - base_labels
-        if n != base_n:
-            n_count_mismatch += 1
-            print(f"  [{t:2d}] CELL COUNT {n} != baseline {base_n}  {tag}")
-        elif missing or extra:
-            n_label_mismatch += 1
-            print(f"  [{t:2d}] LABEL MISMATCH missing={sorted(missing)} "
-                  f"extra={sorted(extra)}  {tag}")
+
+        lost = base_all - all_labels               # a physical kernel slot vanished -- real failure
+        spurious = usable_labels - base_all         # usable label invalid in baseline -- real failure
+        flicker = base_usable.symmetric_difference(usable_labels) - lost - spurious
+
+        if lost or spurious:
+            n_lost += bool(lost)
+            n_spurious += bool(spurious)
+            print(f"  [{t:2d}] LOST={sorted(lost)} SPURIOUS={sorted(spurious)}  {tag}")
         else:
             n_ok += 1
+            if flicker:
+                n_flicker += 1
+                print(f"  [{t:2d}] ok, usable<->clipped flicker only: {sorted(flicker)}  {tag}")
 
     print()
-    print(f"{n_ok}/{args.trials} trials matched baseline exactly "
-          f"(same count + same label set).")
-    if n_count_mismatch:
-        print(f"{n_count_mismatch} trials had a different total cell count.")
-    if n_label_mismatch:
-        print(f"{n_label_mismatch} trials had the same count but different labels.")
+    print(f"{n_ok}/{args.trials} trials had no lost/spurious kernel positions "
+          f"(the invariant that actually matters).")
+    if n_flicker:
+        print(f"{n_flicker} of those were clean except for expected usable<->clipped "
+              f"flicker near the rim.")
+    if n_lost:
+        print(f"{n_lost} trials LOST a baseline kernel position entirely.")
+    if n_spurious:
+        print(f"{n_spurious} trials produced a SPURIOUS usable label not in the baseline lattice.")
     if n_hard_fail:
         print(f"{n_hard_fail} trials failed detection outright (see above).")
     if dish_centers:
