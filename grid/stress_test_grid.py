@@ -118,7 +118,6 @@ def main():
 
     rng = np.random.default_rng(args.seed)
     n_ok = n_lost = n_spurious = n_hard_fail = 0
-    n_flicker = 0  # informational only: usable<->clipped flips, not a failure
     dish_centers, radii, rotations = [], [], []
     dish_center = tuple(base_meta["dish"][:2])
 
@@ -141,7 +140,6 @@ def main():
 
         lost = base_all - all_labels               # a physical kernel slot vanished -- real failure
         spurious = usable_labels - base_all         # usable label invalid in baseline -- real failure
-        flicker = base_usable.symmetric_difference(usable_labels) - lost - spurious
 
         if lost or spurious:
             n_lost += bool(lost)
@@ -149,16 +147,10 @@ def main():
             print(f"  [{t:2d}] LOST={sorted(lost)} SPURIOUS={sorted(spurious)}  {tag}")
         else:
             n_ok += 1
-            if flicker:
-                n_flicker += 1
-                print(f"  [{t:2d}] ok, usable<->clipped flicker only: {sorted(flicker)}  {tag}")
 
     print()
     print(f"{n_ok}/{args.trials} trials had no lost/spurious kernel positions "
           f"(the invariant that actually matters).")
-    if n_flicker:
-        print(f"{n_flicker} of those were clean except for expected usable<->clipped "
-              f"flicker near the rim.")
     if n_lost:
         print(f"{n_lost} trials LOST a baseline kernel position entirely.")
     if n_spurious:
