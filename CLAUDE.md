@@ -27,6 +27,13 @@ output cube (or a raw capture dir directly):
 3. `white_correction.py` — flat-field correction using two in-scene teflon-tape blobs (no dedicated white capture exists for reflectance mode): `darksub / median(tape_blob) * SATURATION` per band. The blob-extraction approach is documented in `white_exploration/`. Produces `*_whitecorr_cube.npy`.
 4. `generate_viable_reflectance.py` — corrects the push-broom scan-axis stretch using a checkerboard target (anisotropic rescale only). Produces `*_corrected_cube.npy` — the default input `grid/detect_grid.py` expects.
 
+`full_correction.py` chains all three correction stages (2-4) in one run, calling into
+each module's functions directly rather than reimplementing them — no intermediate
+`_darksub_cube.npy`/`_whitecorr_cube.npy` is written to disk. Verified bit-for-bit
+identical (`np.allclose`, max abs diff 0.0) against running the three stages
+separately. Use the individual scripts instead when you need to inspect or tune one
+stage (e.g. `--tape-pct`, `--manual-scale`) without repeating the others.
+
 ### Grid detection (`grid/`)
 - `detect_grid.py` — locates the dish + rim on a corrected cube, regenerates a full pitch/phase cell lattice (so cells clipped by the rim or hidden under a marker still get placed), flags each cell usable/clipped/marker-occupied, and writes `<name>_grid_overlay.png` (dish circle + labelled cells) and `<name>_grid_cells.json` (per-cell corners/center/flags).
 - `stress_test_grid.py` — stress-tests `build_grid`'s robustness against `detect_grid.py`'s own detection functions.
