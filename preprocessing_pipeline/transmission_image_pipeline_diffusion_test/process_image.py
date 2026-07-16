@@ -35,8 +35,20 @@ is collapsed, then the dark frame is subtracted from it (clipped to 0) to
 get (W-D). reflectance = darksub / (W-D) -- both sides are already
 dark-subtracted, so this is exactly (r0-D)/(W-D).
 
-Stage 5 -- checkerboard scan-axis geometry correction
-------------------------------------------------------------
+Stage 5 -- checkerboard scan-axis geometry correction (OFF by default)
+------------------------------------------------------------------------
+Disabled unless --geometry-correct or --manual-scale is passed -- kept in
+the codebase for later use, not currently part of the default run. The
+scan-axis stretch factor this stage measures is only valid for a grain scan
+captured at the same stage speed AND the same exposure/line-rate as the
+checkerboard capture it's measured from (exposure affects line rate, which
+affects the stretch, exactly like stage speed does). The four lighting
+setups in use need different (high) exposures to see through the kernel,
+which isn't necessarily compatible with a single shared checkerboard capture
+(itself liable to saturate at those exposures) -- so this stage is disabled
+until that's sorted out, rather than silently applying a wrong-for-this-scan
+factor.
+
 Unlike reflectance mode's in-scene checkerboard (ported from
 pipeline/generate_viable_reflectance.py), transmittance mode has no board in
 the same capture as the dish -- it's scanned as its own dedicated session
@@ -399,7 +411,15 @@ def main():
                         default="spatial",
                         help="Which axis to trust when equalising the scan-axis stretch.")
     parser.add_argument("--manual-scale", type=float, default=None,
-                        help="Skip checkerboard detection; force this scan-axis (x) scale factor.")
+                        help="Skip checkerboard detection; force this scan-axis (x) scale factor "
+                             "(implies geometry correction runs, without needing --geometry-correct).")
+    parser.add_argument("--geometry-correct", action="store_true",
+                        help="Apply the checkerboard scan-axis geometry correction (stage 5). Off "
+                             "by default: the checkerboard's measured scale factor is only valid if "
+                             "it was captured at the same stage speed AND exposure/line-rate as this "
+                             "scan, which isn't guaranteed yet across the different lighting/exposure "
+                             "setups in use -- pass this flag once that's sorted out, or use "
+                             "--manual-scale to force a factor regardless.")
     args = parser.parse_args()
 
     out_dir = Path(args.out)
@@ -496,6 +516,12 @@ def main():
     if args.manual_scale is not None:
         fx, fy = args.manual_scale, 1.0
         print(f"Manual scan-axis scale: x{fx:.4f} (checkerboard detection skipped).")
+    elif not args.geometry_correct:
+        fx, fy = 1.0, 1.0
+        print("Skipping scan-axis geometry correction (checkerboard) -- off by default until "
+              "stage speed/exposure are confirmed consistent between the checkerboard capture and "
+              "this scan. Pass --geometry-correct to run detection, or --manual-scale to force a "
+              "factor.")
     else:
         board_path = Path(args.checkerboard_dir)
         print(f"Loading checkerboard capture from {board_path} ...")
