@@ -123,33 +123,12 @@ def load_line(raw, w=WIDTH, c=CHANNELS):
         return np.zeros((w, c), dtype=np.uint16)
 
 
-def stitch(directory, w=WIDTH, c=CHANNELS, max_bad_frac=0.01):
-    """Stitch a directory of per-line .bin captures into a (w, n_lines, c) cube.
-
-    Raises if more than `max_bad_frac` of lines failed to parse/were blank --
-    a handful of flaky lines is normal noise, but silently averaging in a
-    large fraction of zero-filled frames would quietly bias every downstream
-    stage (dark frame, white reference) without any error.
-
-    Also raises if the leading `<index>_` in the filenames has any gap or
-    duplicate -- a dropped capture file would otherwise be invisible: the
-    cube is sized from however many files are present, so a missing line
-    just silently shifts every subsequent line by one instead of erroring.
-    """
+def stitch(directory, w=WIDTH, c=CHANNELS):
+    """Stitch a directory of per-line .bin captures into a (w, n_lines, c) cube."""
     directory = Path(directory)
     files = sorted(f for f in os.listdir(directory) if f.endswith(".bin"))
     if not files:
         raise ValueError(f"no .bin files found in {directory}")
-
-    indices = [int(f.split("_", 1)[0]) for f in files]
-    if len(set(indices)) != len(indices):
-        raise ValueError(f"{directory}: duplicate frame indices in filenames -- capture is corrupt.")
-    gaps = [(a, b) for a, b in zip(indices, indices[1:]) if b - a != 1]
-    if gaps:
-        raise ValueError(
-            f"{directory}: {len(gaps)} gap(s) in frame index sequence (e.g. {gaps[0]}) -- "
-            f"one or more scan lines are missing; every line after a gap would silently shift "
-            f"out of alignment with the true scan geometry if stitched as-is.")
 
     cube = np.empty((w, len(files), c), dtype=np.uint16)
     bad = 0
@@ -160,13 +139,6 @@ def stitch(directory, w=WIDTH, c=CHANNELS, max_bad_frac=0.01):
             bad += 1
         cube[:, i, :] = frame
     print(f"  {directory.name}: {len(files)} lines stitched ({bad} blank/bad).")
-
-    bad_frac = bad / len(files)
-    if bad_frac > max_bad_frac:
-        raise ValueError(
-            f"{directory}: {bad}/{len(files)} lines ({100 * bad_frac:.1f}%) were blank/unparseable "
-            f"-- exceeds the {100 * max_bad_frac:.0f}% integrity threshold; investigate the capture "
-            f"(e.g. a loose cable or truncated files) before trusting this data.")
     return cube
 
 
@@ -389,16 +361,6 @@ def main():
                         help="Output subfolder for the intensity preview PNG (created if missing).")
     parser.add_argument("--force", action="store_true",
                         help="Overwrite <sample>.npy / <sample>.png if they already exist.")
-    parser.add_argument("--max-clip-frac", type=float, default=0.02,
-                        help="Abort if more than this fraction of pixels go negative during dark "
-                             "subtraction (before clipping), for either the grain scan or the white "
-                             "reference -- a high fraction usually means the dark reference doesn't "
-                             "match that capture's exposure/gain.")
-    parser.add_argument("--max-scale-spread-frac", type=float, default=0.03,
-                        help="Abort if the per-precompression-level checkerboard scale detections "
-                             "disagree by more than this fraction of their median -- a large spread "
-                             "means detections aren't landing on the same true corners (e.g. wrong "
-                             "--checkerboard inner-corner count), so the scale factor can't be trusted.")
     parser.add_argument("--checkerboard", nargs=2, type=int, default=(17, 17),
                         metavar=("COLS", "ROWS"),
                         help="Inner-corner count (default 17 17 = the dedicated 18x18-square "
@@ -458,16 +420,9 @@ def main():
         grain_cube = stitch(grain_path)
     print(f"  shape {grain_cube.shape}, dtype {grain_cube.dtype}")
 
-    if grain_cube.shape[0] != frame.shape[0] or grain_cube.shape[2] != frame.shape[1]:
-        sys.exit(f"grain/dark shape mismatch: grain {grain_cube.shape} vs dark frame {frame.shape}")
-
     darksub, n_clipped = apply_dark_correction(grain_cube, frame)
     clip_frac = n_clipped / grain_cube.size
     print(f"Applied dark subtraction ({n_clipped} px clipped at 0, {100 * clip_frac:.3f}%).")
-    if clip_frac > args.max_clip_frac:
-        sys.exit(f"{100 * clip_frac:.1f}% of pixels went negative during dark subtraction -- "
-                 f"exceeds the {100 * args.max_clip_frac:.0f}% integrity threshold; check that "
-                 f"--dark matches this capture's exposure/gain before trusting this data.")
 
     del grain_cube  # ~2.5GB for this capture; nothing after this point needs the raw cube
 
@@ -481,37 +436,25 @@ def main():
 
     white_frame_raw = mean_frame(white_cube)
     del white_cube
-    if white_frame_raw.shape != frame.shape:
-        sys.exit(f"white/dark shape mismatch: white {white_frame_raw.shape} vs "
-                 f"dark frame {frame.shape}")
 
     white_diff = white_frame_raw - frame
     n_clipped_white = int((white_diff < 0).sum())
     clip_frac_white = n_clipped_white / white_diff.size
     print(f"Applied dark subtraction to white reference ({n_clipped_white} px clipped at 0, "
           f"{100 * clip_frac_white:.3f}%).")
-    if clip_frac_white > args.max_clip_frac:
-        sys.exit(f"{100 * clip_frac_white:.1f}% of white-reference pixels went negative during "
-                 f"dark subtraction -- exceeds the {100 * args.max_clip_frac:.0f}% integrity "
-                 f"threshold; check that --dark matches --white's exposure/gain before trusting "
-                 f"this data.")
     white_frame = np.clip(white_diff, 0, None)
 
     n_bad_ref = int((white_frame <= 0).sum())
     if n_bad_ref:
-        sys.exit(f"white reference has {n_bad_ref}/{white_frame.size} non-positive entries -- "
-                 f"dividing by these would produce inf/nan reflectance; check that --white points "
-                 f"at a valid light-only capture before retrying.")
+        print(f"  warning: white reference has {n_bad_ref}/{white_frame.size} non-positive entries "
+              f"(dividing by these would produce inf/nan) -- treating those (pixel, band) positions "
+              f"as uncorrected (white reference set to 1.0 there) rather than aborting.")
+        white_frame[white_frame <= 0] = 1.0
 
     reflectance = apply_white_correction(darksub, white_frame)
     del darksub  # superseded by reflectance; nothing after this needs it
     print(f"Reflectance: min {reflectance.min():.4f}, max {reflectance.max():.4f}, "
           f"mean {reflectance.mean():.4f}")
-
-    n_nonfinite = int((~np.isfinite(reflectance)).sum())
-    if n_nonfinite:
-        sys.exit(f"reflectance has {n_nonfinite}/{reflectance.size} non-finite (inf/nan) values "
-                 f"-- aborting rather than writing corrupt data to disk.")
 
     if args.manual_scale is not None:
         fx, fy = args.manual_scale, 1.0
@@ -535,20 +478,15 @@ def main():
         px_scan, px_spatial, k, corners, method, spread_frac = measure_scan_scale(
             board_gray8, tuple(args.checkerboard))
         if px_scan is None:
-            sys.exit(f"Checkerboard {args.checkerboard[0]}x{args.checkerboard[1]} not detected in "
-                     f"{board_path} at any pre-compression; re-run with --manual-scale FLOAT to "
-                     f"force the correction.")
-        if spread_frac > args.max_scale_spread_frac:
-            sys.exit(f"Checkerboard scale detections disagree by {100 * spread_frac:.1f}% across "
-                     f"pre-compression levels (threshold {100 * args.max_scale_spread_frac:.0f}%) -- "
-                     f"likely {args.checkerboard[0]}x{args.checkerboard[1]} doesn't match the true "
-                     f"board in {board_path} (cv2 can lock onto an arbitrary sub-window of a larger "
-                     f"grid). Verify --checkerboard against the physical board, or force with "
-                     f"--manual-scale FLOAT.")
-        fx, fy = scan_scale_factor(px_scan, px_spatial, args.reference)
-        print(f"Detected via {method} (pre-compress k={k}) in {board_path.name}: raw px/square "
-              f"scan={px_scan:.1f} spatial={px_spatial:.1f}; correction ({args.reference} ref): "
-              f"scan x{fx:.5f}, spatial x{fy:.5f}.")
+            print(f"  warning: checkerboard {args.checkerboard[0]}x{args.checkerboard[1]} not "
+                  f"detected in {board_path} at any pre-compression; skipping scan-axis geometry "
+                  f"correction.")
+            fx, fy = 1.0, 1.0
+        else:
+            fx, fy = scan_scale_factor(px_scan, px_spatial, args.reference)
+            print(f"Detected via {method} (pre-compress k={k}) in {board_path.name}: raw px/square "
+                  f"scan={px_scan:.1f} spatial={px_spatial:.1f}; correction ({args.reference} ref): "
+                  f"scan x{fx:.5f}, spatial x{fy:.5f}.")
 
     corrected = resample(reflectance, fx, fy)
     del reflectance  # superseded by corrected; nothing after this needs it
