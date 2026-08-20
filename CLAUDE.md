@@ -1,118 +1,103 @@
-# CLAUDE.md
+# CLAUDE.md — repository root
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working anywhere in this repository.
+**`PROJECT_REPORT.md` is the human-facing account of the whole project** — read
+it first for what was collected, corrected, labelled and modelled, and what the
+results support. This file is the operating manual.
 
 ## What this is
 
-Tooling and captured data for hyperspectral imaging (HSI) with a Specim push-broom
-line-scan camera. There is no build system, test suite, or dependency manifest — it is
-a small set of NumPy/OpenCV/matplotlib scripts plus raw capture directories.
+Predicting barley germination from near-infrared hyperspectral images. 25 petri
+dishes, 548 kernels, imaged with a Specim push-broom line-scan camera in two
+optical modes from both faces, before wetting and 8 h after, then grown and
+scored for germination over five days.
 
-- `loadstich/` — packing codec + `SpecimStitcher` class for unpacking/repacking Mono12Packed data and stitching per-line captures into a hypercube.
-- `pipeline/` — script-based stitch → dark-subtract → white-correct → geometry-correct chain that turns a raw capture dir into the corrected cube `grid/` consumes.
-- `grid/` — detects the petri-dish + per-kernel cutout grid on a corrected cube and renders the labelled overlay.
-- `kernels/` — manual kernel-outline workflow: read off coordinates, record outlines, rasterize + plot per-kernel spectra. Includes an interactive lasso/polygon alternative to hand-picked coordinates.
-- `white_exploration/` — R&D scripts behind `pipeline/white_correction.py`'s tape-blob extraction; kept for reference, not part of the run path.
-- `07012026/` — raw capture data (one directory per acquisition; large binaries, not code; gitignored).
-- `modeling_pipeline/` — everything downstream of the corrected cubes: COCO kernel
-  masks + the gridfit lattice into a modelling dataset, then PLS/CNN models for
-  variety and germination. **Has its own `CLAUDE.md` and `README.md`; read those
-  before working in it** — it has a different dependency set (`.venv/`), its own
-  conventions, and several settled decisions that are expensive to rediscover.
+Two halves, and they are separate projects with separate conventions:
 
-Third-party dependencies: `numpy`, `Pillow`, `opencv-python`, `matplotlib`.
+```
+preprocessing_pipeline/    raw camera lines -> corrected cubes -> a fitted plate lattice
+modeling_pipeline/         cubes + hand-drawn masks -> a dataset -> models
+PROJECT_REPORT.md          the full write-up
+```
 
-## Architecture
+**`modeling_pipeline/` has its own `CLAUDE.md` and `README.md`. Read those
+before working in it** — it has a different dependency set, its own
+conventions, and several settled decisions that are expensive to rediscover.
 
-### Radiometric/geometric pipeline (`pipeline/`)
-Each stage is a standalone script; run in order, each consuming the previous stage's
-output cube (or a raw capture dir directly):
-1. `stitch_grain.py` — stitches a directory of per-line `.bin` captures into a `(width, n_lines, channels)` uint16 cube. Non-destructive (unlike `SpecimStitcher`, it does not delete source files). Reuses `loadstich/hsi_save_load.load_hsi` via a `sys.path` shim.
-2. `correction.py` — dark-current subtraction: `clip(raw - mean(dark_lines), 0)`. Produces `*_darksub_cube.npy`.
-3. `white_correction.py` — flat-field correction using two in-scene teflon-tape blobs (no dedicated white capture exists for reflectance mode): `darksub / median(tape_blob) * SATURATION` per band. The blob-extraction approach is documented in `white_exploration/`. Produces `*_whitecorr_cube.npy`.
-4. `generate_viable_reflectance.py` — corrects the push-broom scan-axis stretch using a checkerboard target (anisotropic rescale only). Produces `*_corrected_cube.npy` — the default input `grid/detect_grid.py` expects.
+## Scope: two modelling tracks, and only two
 
-`full_correction.py` chains all three correction stages (2-4) in one run, calling into
-each module's functions directly rather than reimplementing them — no intermediate
-`_darksub_cube.npy`/`_whitecorr_cube.npy` is written to disk. Verified bit-for-bit
-identical (`np.allclose`, max abs diff 0.0) against running the three stages
-separately. Use the individual scripts instead when you need to inspect or tune one
-stage (e.g. `--tape-pct`, `--manual-scale`) without repeating the others.
+| | PLS | CNN |
+|---|---|---|
+| **variety typing** — 4 cultivars | `train_pls.py --task variety` | `train_cnn.py --task variety` |
+| **germination** — binary, 89/11 | `train_germination.py` | `train_cnn.py --task germination` |
 
-### Grid detection (`grid/`)
-- `detect_grid.py` — locates the dish + rim on a corrected cube, regenerates a full pitch/phase cell lattice (so cells clipped by the rim or hidden under a marker still get placed), flags each cell usable/clipped/marker-occupied, and writes `<name>_grid_overlay.png` (dish circle + labelled cells) and `<name>_grid_cells.json` (per-cell corners/center/flags).
-- `stress_test_grid.py` — stress-tests `build_grid`'s robustness against `detect_grid.py`'s own detection functions.
+A germination-*time* regressor was built and deleted; timing is out of scope for
+models. Do not add a third track without being asked.
 
-### Manual kernel workflow (`kernels/`)
-- `grid_overlay.py` — renders a cube with a labelled pixel-coordinate grid so kernel corners can be read off by eye (unrelated to `grid/detect_grid.py` despite the similar name/output).
-- `kernels.py` — `KERNELS` list of hand-picked `(x, y)` outlines, built from `grid_overlay.py`'s coordinates.
-- `analyze_kernels.py` — rasterizes outlines from a `.py`/`.json` file into masks, then plots mean ± std spectra per kernel. Used for transmittance QC (confirming light actually passes through a kernel).
-- `segment_kernels.py` — shared `display_band` helper (used by the two scripts above) plus `KernelSegmenter`, an interactive lasso/polygon alternative that traces kernels by mouse instead of hand-coding coordinates.
+## The data is not in the repo
 
-### `loadstich/` — packing codec + class-based stitcher
-The pipeline turns a directory of individual scan **lines** into a single stitched
-hyperspectral cube.
+The repository tracks code plus small irreplaceable inputs — about 160 files,
+~10 MB. It tracks **no capture data**.
 
-### `loadstich/hsi_save_load.py` — the packing codec
-Camera data is **Mono12Packed**: two 12-bit pixels packed into three 8-bit bytes.
-- `load_hsi(uint8_arr) -> uint16` unpacks 3 bytes → 2 pixels. Input `channels` (last dim) must be a multiple of 3.
-- `save_hsi(uint16_arr) -> uint8` repacks 2 pixels → 3 bytes. Input `channels` must be a multiple of 2.
-- These are exact inverses and are the single source of truth for the bit layout — the byte-ordering math is subtle (note the corrected `1::2` line in `load_hsi`); do not reimplement the shifts inline elsewhere.
+| | size | where | regenerable |
+|---|---|---|---|
+| `real_data/` corrected cubes | 163 GB | beside the checkout | **no** |
+| `modeling_pipeline/dataset/` | 13 GB | generated | yes, ~4 min, needs the cubes |
+| `grid_view/` fitted lattice | 348 MB | generated | yes, needs the cubes |
+| `labels/germination_photos/` | 464 MB | beside the checkout | **no** — evidence for the labels |
 
-### `loadstich/specim_stitcher.py` — `SpecimStitcher`
-Reads a capture directory of per-line files, orients each line, stacks them, then
-writes one packed cube. `load_lines()` is the entry point and its side effects matter:
-1. Lists the directory, sorts filenames lexically (see the open TODO about sort order / neighbour-pair swapping), and requires the files to be *exclusively* `.bin` or `.npy`.
-2. For each file: `load_hsi` → `reshape([c, w])` → `swapaxes(0,1)` → reverse rows (`[::-1]`). A line that fails to parse is replaced by a zero frame and counted in `self.bad_lines`.
-3. `stitch_lines()` stacks lines along axis 1 into `self.img` (shape ≈ width × n_lines × channels).
-4. `save_hsi(self.img)` repacks and saves to `save_path/raw_hsi_img_mono12p.npy` (or `raw_hsi_dark_mono12p.npy` when `dark=True`).
-5. **Deletes every source file** in the load directory. This is destructive and irreversible — treat capture dirs under `07012026/` as consumable inputs, and never point `load_path` at data you need to keep without backing it up first.
+**Tracked and irreplaceable:** `modeling_pipeline/annotations/instances_default.json`
+(5,456 hand-drawn masks), `germination_label_annotator.xlsx` (the scored labels),
+`timing.json` (the measured capture clock; its acquisition tooling was removed).
+Never delete these and never move them into a gitignored folder.
 
-Default frame geometry is `w=640`, `c=224` (640 spatial px × 224 spectral channels per line).
+**The shortcut:** copy `dataset/` and all modelling works without the 163 GB of
+cubes. Only `build_dataset.py`, `verify_dataset.py` and
+`explore/review_masks.py` read raw cubes.
 
-### Import path gotcha
-`specim_stitcher.py` imports the codec as `from jarvis_gui.utils.hsi_save_load import load_hsi, save_hsi`.
-These modules are meant to live at `jarvis_gui/utils/` inside a larger `jarvis_gui`
-project — that package is **not present in this checkout**, so the import will not
-resolve as-is. When running here, either add `jarvis_gui` to `PYTHONPATH` or adjust the
-import to the local `hsi_save_load`.
+`.gitignore` note: git does **not** support trailing comments on a pattern line.
+Every comment in the root `.gitignore` is on its own line for that reason; a
+pattern written as `data/  # big` silently matches nothing.
 
-## Capture data (`07012026/`)
+## Things that will bite you
 
-Each subdirectory is one acquisition; the name encodes `sample_mode_exp`:
-- sample: `dark` / `white` reference or `grain` (the actual specimen)
-- mode: `ref` (reflectance) / `trans` (transmittance)
-- `exp<n>`: exposure time (e.g. `2500`, `10000`, `100k`)
-
-Files are named `<index>_<timestamp>_w640_h224_pMono12Packed.bin`. Each `.bin` is a
-single scan line of 215040 bytes = 224 × 640 pixels × 12 bits / 8. `dark_*` captures are
-the ones loaded with `dark=True`.
+- **`cells.json` records absolute paths** from the machine that fitted the grid.
+  Read a capture directory through `config.local_capture_dir()`, never
+  `Path(rec["capture"]["source"])`, or the code only works on one machine.
+- **Wavelengths are assumed, not calibrated.** 224 bands treated as linear over
+  900–1700 nm; no calibration file exists. Band indices are exact, nanometres
+  are not.
+- **The folder names `day1`, `day9`, `day2` are rig slot labels**, not calendar
+  days: they mean 0 h, 8 h and 24 h after wetting. Never sort or join on them —
+  join on `hours` or `kernel_uid`.
+- **Variety is perfectly confounded with dish.** Every fold holds out whole
+  dishes, always. Any claim about variety needs a dish-level control.
+- **The reflectance white reference clips** over roughly bands 21–130, up to
+  79%, making reflectance read high there. Not recoverable after capture.
+- **`SpecimStitcher.load_lines()` deletes its source directory on success.**
+  Nothing current calls it; do not start.
 
 ## Running
 
-`loadstich/specim_stitcher.py` has no CLI entry point; use the class directly, e.g.:
-
-```python
-from specim_stitcher import SpecimStitcher   # local import (see gotcha above)
-SpecimStitcher(load_path="07012026/grain_ref_exp_2500",
-               save_path="out", dark=False).load_lines()
-```
-
-Remember `load_lines()` deletes the source directory's contents on success — prefer
-`pipeline/stitch_grain.py` (non-destructive) unless you specifically want the packed
-`SpecimStitcher` output.
-
-Everything under `pipeline/`, `grid/`, and `kernels/` is a standalone script with
-`argparse --help`. Typical end-to-end run from the repo root:
-
 ```bash
-python3 pipeline/stitch_grain.py            # 07012026/*/  -> 07012026/stitched/*_cube.npy
-python3 pipeline/correction.py              # -> *_darksub_cube.npy
-python3 pipeline/white_correction.py        # -> *_whitecorr_cube.npy
-python3 pipeline/generate_viable_reflectance.py  # -> *_corrected_cube.npy
-python3 grid/detect_grid.py                 # -> *_grid_overlay.png, *_grid_cells.json
+# preprocessing (one capture at a time; edit the four vars in config.py first)
+cd preprocessing_pipeline/collection_pipeline && python3 process.py
+python3 grid_index.py                    # fit the plate lattice on every capture
 
-python3 kernels/grid_overlay.py <cube>      # read off (x, y) kernel coordinates
-# hand-edit kernels/kernels.py with those coordinates, then:
-python3 kernels/analyze_kernels.py <cube> kernels/kernels.py --save-mask
+# modelling
+cd modeling_pipeline
+python3 build_dataset.py                 # cubes + masks + lattice -> dataset/
+python3 verify_dataset.py                # the 24-check gate; must be green
+python3 -m barley.splits                 # variety folds
+python3 -m barley.germination            # germination folds
+.venv/bin/python train_germination.py    # the binary model
 ```
+
+## Conventions
+
+- One script per question, `argparse --help` on all of them, output to a folder
+  carrying its own `summary.md` that restates every number in its figures.
+- Anything hand-acquired and unreproducible lives at a repo root and is
+  versioned. Anything a script can rebuild lives in a gitignored folder.
+- Quality gates default to **off**, so what is excluded is always an explicit
+  choice recorded in the run rather than a silent default.

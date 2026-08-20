@@ -8,7 +8,8 @@ against the fitted lattice and is required to be a bijection.
 
 An audit of all 4381 day-1/day-9 masks found zero off-lattice masks, zero
 straddling two cells and zero double-assignments, with a median containment of
-1.000 and a minimum of 0.981. Those are the tolerances encoded below.
+1.000 and a minimum of 0.9915 (re-measured from the built index on 2026-08-20;
+an earlier note said 0.981). Those are the tolerances encoded below.
 """
 import json
 import sys

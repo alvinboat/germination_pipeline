@@ -439,6 +439,10 @@ def main():
               if r["auc_within_dish"] is not None]
         thr = float(np.median([r["threshold"] for r in recs0]))
         pooled = metrics.binary_summary(yd, score, thr, pred=pred)
+        # `auc_*` without a suffix is repeat 0 (the canonical fold file, so it
+        # is the number comparable with other models); `auc_*_mean` is the mean
+        # over all repeats and is the better estimate. Both are recorded because
+        # quoting one while meaning the other is an easy and invisible mistake.
         return {"label": label, "pooled": pooled, "folds": recs0,
                 "y": yd, "score": score, "pred": pred,
                 "dish": dd, "variety": vd, "rows": keep0,
@@ -488,6 +492,8 @@ def main():
                 "pooled": pl, "folds": res["folds"], "repeats_detail": res["repeats"],
                 "auc_mean": res["auc_mean"], "auc_sd": res["auc_sd"],
                 "auc_within_dish": res["auc_within_dish"],
+                "auc_within_dish_mean": res["auc_within_dish_mean"],
+                "auc_within_dish_sd": res["auc_within_dish_sd"],
                 "auc_within_variety": res["auc_within_variety"],
                 "per_variety": res["per_variety"],
                 "permutation": res.get("permutation"),
@@ -525,6 +531,8 @@ def main():
             "repeats_detail": nested["repeats"],
             "auc_mean": nested["auc_mean"], "auc_sd": nested["auc_sd"],
             "auc_within_dish": nested["auc_within_dish"],
+            "auc_within_dish_mean": nested["auc_within_dish_mean"],
+            "auc_within_dish_sd": nested["auc_within_dish_sd"],
             "auc_within_variety": nested["auc_within_variety"],
             "per_variety": nested["per_variety"],
             "permutation": nested.get("permutation"),
