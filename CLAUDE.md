@@ -14,6 +14,11 @@ a small set of NumPy/OpenCV/matplotlib scripts plus raw capture directories.
 - `kernels/` — manual kernel-outline workflow: read off coordinates, record outlines, rasterize + plot per-kernel spectra. Includes an interactive lasso/polygon alternative to hand-picked coordinates.
 - `white_exploration/` — R&D scripts behind `pipeline/white_correction.py`'s tape-blob extraction; kept for reference, not part of the run path.
 - `07012026/` — raw capture data (one directory per acquisition; large binaries, not code; gitignored).
+- `modeling_pipeline/` — everything downstream of the corrected cubes: COCO kernel
+  masks + the gridfit lattice into a modelling dataset, then PLS/CNN models for
+  variety and germination. **Has its own `CLAUDE.md` and `README.md`; read those
+  before working in it** — it has a different dependency set (`.venv/`), its own
+  conventions, and several settled decisions that are expensive to rediscover.
 
 Third-party dependencies: `numpy`, `Pillow`, `opencv-python`, `matplotlib`.
 

@@ -1,4 +1,65 @@
+# ===========================================================================
+# This repo tracks CODE and small irreplaceable INPUTS. It tracks no capture
+# data: raw and corrected cubes total ~180 GB and live beside the checkout,
+# not in it. PROJECT_REPORT.md, "Reproducing this", says what to copy.
+#
+# NOTE: git does not support trailing comments on a pattern line. Every
+# comment here is on its own line for that reason.
+# ===========================================================================
+
+# --------------------------------------------------------- capture data ---
+# real_data/  corrected cubes, 163 GB -- the modelling input
+# data/       early exploratory captures
+real_data/
+data/
+archive/
 07012026/
+
+# Image trees inside the preprocessing pipelines: raw lines, corrected cubes,
+# previews, per-capture renders. Regenerable from the raw archive, and large.
+preprocessing_pipeline/storage_image/
+preprocessing_pipeline/7222026_export/
+preprocessing_pipeline/slit_diffuse/
+**/raw_image/
+**/raw_binaries/
+**/preview/
+**/preview_coco/
+**/reflectance_images/
+**/transmittance_images/
+**/grid_view/
+**/corrected_file/
+**/corrected_image/
+**/calibration/
+**/stitched/
+
+# ---------------------------------------------- data files, anywhere ------
+*.npy
+*.npz
+*.bin
+*.HEIC
+*.heic
+*.tif
+*.tiff
+*.pgm
+*.raw
+
+# Figures produced by a script are regenerable; the ones worth keeping are
+# whitelisted below.
+*.png
+*.jpg
+*.jpeg
+!modeling_pipeline/exploration/**/*.png
+!**/index_reference_*.png
+
+# --------------------------------------------------------- environments ---
+.venv/
+venv/
 __pycache__/
 *.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# --------------------------------------------------------------- editor ---
+.vscode/
 .claude/
+.DS_Store

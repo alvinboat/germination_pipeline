@@ -1,7 +1,8 @@
 """
 End-to-end reflectance correction: stitch -> dark frame -> dark subtraction
--> white-capture ratio correction -> checkerboard geometry correction ->
-greyscale intensity preview. Currently implements stages 1-6.
+-> white-capture ratio correction (opt-in, see stage 4) -> checkerboard
+geometry correction (opt-in, see stage 5) -> greyscale intensity preview.
+Currently implements stages 1-6.
 
 Stage 1 -- stitching
 ---------------------
@@ -10,30 +11,64 @@ uint16 cube. Mirrors pipeline/stitch_grain.py; reuses the same hsi_save_load
 codec (see loadstich/hsi_save_load.py -- the byte-packing math is subtle, do
 not reimplement it here).
 
-Stage 2 -- dark frame
-----------------------
-mean_frame() collapses the dark reference cube to one (width, channels) frame
-by averaging across scan lines. The push-broom sensor's dark current/offset
-is fixed per (spatial pixel, band), not per scene, so a single averaged frame
-is the correction target for every line of the grain scan later.
+Stage 2 -- dark frames (one per signal)
+------------------------------------------
+Each sample is captured as two pairs: the grain/image scan with its own dark
+exposure, and the dedicated white capture with its own dark exposure. These
+two darks are not interchangeable -- raw_dark/raws/<sample>*/ is the dark
+reference for the grain scan, raw_dark/whites/<sample>*/ is the dark
+reference for the white capture (see find_sample_dir()). mean_frame()
+collapses each to one (width, channels) frame -- the push-broom sensor's
+dark current/offset is fixed per (spatial pixel, band), not per scene, so a
+single averaged frame is the correction target for every line of its paired
+signal.
 
 Stage 3 -- dark subtraction
 ------------------------------
-apply_dark_correction() subtracts the (width, channels) dark frame from every
-one of the grain cube's lines (broadcast over the scan-line axis), clipping
-negative results to 0. This is the (r0-D) half of the (r0-D)/(W-D) reflectance
-formula; the white half (W-D) is added in stage 4.
+apply_dark_correction() subtracts the (width, channels) dark-for-image frame
+from every one of the grain cube's lines (broadcast over the scan-line axis),
+clipping negative results to 0. This is the (r0-D) half of the (r0-D)/(W-D)
+reflectance formula; the white half (W-D) is computed the same way in stage
+4, using the dark-for-white frame instead.
 
-Stage 4 -- dedicated white capture + ratio correction
-----------------------------------------------------------
-Unlike reflectance mode, transmittance mode has no in-scene white target, so
-each sample is paired with its own dedicated white capture: a line scan of
-the light with nothing in the way, in the same raw format as the dark
-reference (see raw_white/<sample>/, paired by sample name). mean_frame()
-collapses it to one (width, channels) frame the same way the dark reference
-is collapsed, then the dark frame is subtracted from it (clipped to 0) to
-get (W-D). reflectance = darksub / (W-D) -- both sides are already
-dark-subtracted, so this is exactly (r0-D)/(W-D).
+Stage 4 -- dedicated white capture + ratio correction (OFF by default)
+----------------------------------------------------------------------
+Disabled unless --white-correct is passed. The dedicated white capture
+(raw_white/<sample>*/) currently on hand is a straight, unobstructed beam
+shot -- it shows the light source's own raw emission profile (sharply peaked
+in the middle of the 640px spatial axis, ~0 at the edges), not the profile
+the grain scan actually sees, since the grain scan's light passes through
+the dish/tray first, which scatters and evens the light out before it hits
+the sensor (confirmed: the grain scan's own dark-subtracted spatial profile
+is flat, ~1000-2200 across the full width, nothing like the white capture's
+~20-2700 spike). Dividing by this white reference doesn't cancel real
+unevenness, it manufactures fake banding -- so it's off until a white
+reference captured through the same optical path (e.g. an empty tray/dish,
+no seeds) is available. See find_sample_dir(), parse_exposure(), and
+apply_white_correction() -- kept for when that reference exists.
+
+When enabled: mean_frame() collapses the white capture to one (width,
+channels) frame the same way the dark references are collapsed, then the
+dark-for-white frame (not the dark-for-image frame) is subtracted from it
+(clipped to 0) to get (W-D). The white capture is taken at a much lower
+exposure than the grain scan -- the grain scan needs a high exposure to see
+through the kernel, but the same exposure blows out an unobstructed white
+capture. Raw ADC counts scale ~linearly with exposure time, so (W-D)
+measured at the white capture's exposure is scaled up by
+(image_exposure / white_exposure) before use, putting it on the same
+footing as the grain scan's dark-subtracted counts. Both exposures are
+parsed from the matched dark folders' _<n>/_<n>k suffix (dark-for-image
+shares the grain scan's exposure, dark-for-white shares the white capture's,
+per stage 2).
+
+reflectance = darksub / ((W-D) * exposure_scale) -- both sides are already
+dark-subtracted and now on the same exposure footing, so this is exactly
+(r0-D)/(W-D) once W-D is referred to the grain scan's exposure.
+
+By default (--white-correct not passed), this stage is skipped entirely --
+neither raw_dark/whites/<sample>*/ nor raw_white/<sample>*/ are read, and
+the corrected output is just the dark-subtracted grain scan (stage 3's
+result) carried through to stage 6.
 
 Stage 5 -- checkerboard scan-axis geometry correction (OFF by default)
 ------------------------------------------------------------------------
@@ -73,19 +108,26 @@ intensity_preview() collapses the final corrected cube to a single greyscale
 image (mean across all 224 bands, min-max normalised to 0-255), for a quick
 look at the corrected result without needing a wavelength calibration.
 
-eBUS Player saves a session's .bin files flat into raw_image_bin/ (no
+eBUS Player saves a session's .bin files flat into raw_image/ (no
 per-session subfolder). Run:
-    python3 process_image.py day2_dish3_ref_2500
+    python3 process_image.py slit_diffuse
 
-This stitches/corrects everything currently in raw_image_bin/, writes
-corrected_file_npy/day2_dish3_ref_2500.npy and
-corrected_image/day2_dish3_ref_2500.png, then moves those .bin files into
-raw_image_bin_storage/day2_dish3_ref_2500/ -- leaving raw_image_bin/ empty
-and ready for the next capture.
+`sample` is a prefix, not an exact folder name -- it's matched against
+raw_white/, raw_dark/raws/, and raw_dark/whites/ to find each one's single
+subfolder starting with that prefix (e.g. raw_white/slit_diffuse_white_150/,
+raw_dark/raws/slit_diffuse_dark_25k/, raw_dark/whites/slit_diffuse_dark_150/)
+-- exactly one match is required in each, or the run aborts rather than
+guessing.
+
+This stitches/corrects everything currently in raw_image/, writes
+corrected_file/slit_diffuse.npy and corrected_image/slit_diffuse.png, then
+moves those .bin files into raw_image_storage/slit_diffuse/ -- leaving
+raw_image/ empty and ready for the next capture.
 """
 
 import argparse
 import os
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -102,8 +144,9 @@ from hsi_save_load import load_hsi  # noqa: E402
 WIDTH = 640       # spatial pixels per line
 CHANNELS = 224    # spectral bands per line
 
-DEFAULT_DARK = "raw_dark/dark_day2_ref_2500"  # same dark reference every session
-DEFAULT_WHITE_DIR = "raw_white"    # per-sample white capture: <DEFAULT_WHITE_DIR>/<sample>/
+DEFAULT_DARK_RAWS_DIR = "raw_dark/raws"      # dark-for-image reference: <...>/<sample>*/
+DEFAULT_DARK_WHITES_DIR = "raw_dark/whites"  # dark-for-white reference: <...>/<sample>*/
+DEFAULT_WHITE_DIR = "raw_white"    # per-sample white capture: <DEFAULT_WHITE_DIR>/<sample>*/
 DEFAULT_CHECKERBOARD = "raw_checkerboard"   # dedicated board capture, same stage/optics setup
 RAW_IMAGE_DIR = "raw_image"        # eBUS Player saves flat into here, no subfolder
 STORAGE_DIR = "raw_image_storage"  # processed .bin files archived to <STORAGE_DIR>/<sample>/
@@ -140,6 +183,46 @@ def stitch(directory, w=WIDTH, c=CHANNELS):
         cube[:, i, :] = frame
     print(f"  {directory.name}: {len(files)} lines stitched ({bad} blank/bad).")
     return cube
+
+
+def find_sample_dir(base_dir, sample):
+    """The single subdirectory of base_dir whose name is/starts with sample.
+
+    Folders are named <sample>_<suffix>_<exp>/ (e.g. slit_diffuse_white_150),
+    not the bare sample name, so an exact-name lookup won't work -- this
+    matches by prefix instead, and requires exactly one hit so a stale or
+    leftover folder from another session can't silently get picked up.
+    """
+    base = Path(base_dir)
+    if not base.is_dir():
+        raise SystemExit(f"{base} does not exist.")
+    matches = sorted(p for p in base.iterdir()
+                      if p.is_dir() and (p.name == sample or p.name.startswith(sample + "_")))
+    if not matches:
+        raise SystemExit(f"no folder matching '{sample}' found in {base} -- "
+                          f"expected exactly one (e.g. {sample}_<suffix>_<exp>/).")
+    if len(matches) > 1:
+        raise SystemExit(f"multiple folders matching '{sample}' found in {base}: "
+                          f"{[m.name for m in matches]} -- expected exactly one; "
+                          f"use a more specific sample name, or clear the stale folder.")
+    return matches[0]
+
+
+EXPOSURE_SUFFIX_RE = re.compile(r"_(\d+)(k)?$")
+
+
+def parse_exposure(name):
+    """Exposure time encoded in a capture folder's trailing _<n>/_<n>k suffix.
+
+    Matches this repo's <sample>_<suffix>_<exp> folder-naming convention (e.g.
+    paper_dark_125k -> 125000, paper_dark_1250 -> 1250). Returns None if name
+    doesn't end in a parseable exposure token.
+    """
+    m = EXPOSURE_SUFFIX_RE.search(name)
+    if not m:
+        return None
+    value = int(m.group(1))
+    return value * 1000 if m.group(2) else value
 
 
 # ---------------------------------------------------------------- stage 2 --
@@ -328,29 +411,59 @@ def resample(img, fx, fy):
     return cv2.resize(img, (new_w, new_h), interpolation=interp)
 
 
+
+
+
 # ---------------------------------------------------------------- stage 6 --
-def intensity_preview(cube):
-    """Greyscale (height, width) uint8 preview: mean across all bands, min-max normalised."""
-    mean = np.asarray(cube.mean(axis=2))
-    lo, hi = float(mean.min()), float(mean.max())
-    norm = (mean - lo) / (hi - lo) if hi > lo else np.zeros_like(mean)
-    return (norm * 255.0).round().astype(np.uint8)
+def intensity_preview(cube, lo_pct=1.0, hi_pct=99.0):
+    """Greyscale (height, width) uint8 preview: mean across all bands, percentile-clip normalised.
+
+    A handful of bad-white-reference pixels (see the white-reference fallback
+    above) produce reflectance values orders of magnitude above the rest of
+    the scene -- a true min-max stretch spends nearly the whole 0-255 range
+    on those outliers and crushes everything else to near-black. Clipping to
+    the 1st/99th percentile instead keeps the stretch anchored to the actual
+    scene content.
+
+    nan-aware, because transmission_imagev2 writes nan where it has no usable
+    white reference and every pixel of such a cube carries some (the lamp is
+    dead in the outermost bands). A plain mean propagates that to the whole
+    frame, the percentiles follow, and the uint8 cast turns nan into 0 -- a
+    silently, solidly black preview. On a cube with no nan these behave
+    identically to the plain versions.
+    """
+    mean = np.asarray(np.nanmean(cube, axis=2))
+    if not np.isfinite(mean).any():
+        return np.zeros(mean.shape, dtype=np.uint8)
+    lo, hi = np.nanpercentile(mean, [lo_pct, hi_pct])
+    norm = np.clip((mean - lo) / (hi - lo), 0.0, 1.0) if hi > lo else np.zeros_like(mean)
+    return (np.nan_to_num(norm, nan=0.0) * 255.0).round().astype(np.uint8)
 
 
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("sample",
-                        help=f"Sample name, e.g. day2_dish3_ref_2500 -- used to name outputs "
-                             f"(<sample>.npy / <sample>.png) and the archive folder "
-                             f"({STORAGE_DIR}/<sample>/) the raw .bin files are moved into afterward.")
-    parser.add_argument("--dark", default=DEFAULT_DARK,
-                        help="Dark reference: raw capture dir or stitched cube .npy.")
+                        help=f"Sample name, e.g. slit_diffuse -- matched as a prefix against "
+                             f"{DEFAULT_WHITE_DIR}/, {DEFAULT_DARK_RAWS_DIR}/, and "
+                             f"{DEFAULT_DARK_WHITES_DIR}/ to find each one's single matching "
+                             f"folder, and used verbatim to name outputs (<sample>.npy / "
+                             f"<sample>.png) and the archive folder ({STORAGE_DIR}/<sample>/) the "
+                             f"raw .bin files are moved into afterward.")
+    parser.add_argument("--dark-raw", default=None,
+                        help=f"Dark reference for the grain scan: raw capture dir or stitched cube "
+                             f".npy. Defaults to the single {DEFAULT_DARK_RAWS_DIR}/<sample>*/ "
+                             f"folder matching the sample argument.")
+    parser.add_argument("--dark-white", default=None,
+                        help=f"Dark reference for the white capture -- a separate capture from "
+                             f"--dark-raw, since the grain scan and white capture are taken at "
+                             f"different exposures. Raw capture dir or stitched cube .npy. Defaults "
+                             f"to the single {DEFAULT_DARK_WHITES_DIR}/<sample>*/ folder matching "
+                             f"the sample argument.")
     parser.add_argument("--white", default=None,
                         help=f"White reference for this sample: raw capture dir or stitched cube "
-                             f".npy -- a dedicated line scan of the light, same format as --dark. "
-                             f"Defaults to {DEFAULT_WHITE_DIR}/<sample>/ (paired to the grain scan "
-                             f"by sample name).")
+                             f".npy -- a dedicated line scan of the light. Defaults to the single "
+                             f"{DEFAULT_WHITE_DIR}/<sample>*/ folder matching the sample argument.")
     parser.add_argument("--grain", default=None,
                         help=f"Grain/sample scan: raw capture dir or stitched cube .npy. "
                              f"Defaults to {RAW_IMAGE_DIR}/ (eBUS Player's flat capture dir); "
@@ -361,6 +474,20 @@ def main():
                         help="Output subfolder for the intensity preview PNG (created if missing).")
     parser.add_argument("--force", action="store_true",
                         help="Overwrite <sample>.npy / <sample>.png if they already exist.")
+    parser.add_argument("--white-correct", action="store_true",
+                        help="Apply the dedicated white capture ratio correction (stage 4). Off by "
+                             "default: the white capture on hand is a straight unobstructed beam, not "
+                             "shot through the dish/tray the grain scan's light actually passes "
+                             "through, so dividing by it manufactures banding rather than correcting "
+                             "real unevenness. Pass this once a white reference captured through the "
+                             "same optical path (e.g. an empty tray) is available.")
+    parser.add_argument("--exposure-scale", type=float, default=None,
+                        help="Manual image_exposure/white_exposure ratio to scale the "
+                             "dark-subtracted white reference by, skipping auto-detection. "
+                             "Defaults to parsing both exposures from the matched dark "
+                             "folders' _<n>/_<n>k suffix (see parse_exposure()); pass this "
+                             "if those folder names don't encode the exposure. Only used with "
+                             "--white-correct.")
     parser.add_argument("--checkerboard", nargs=2, type=int, default=(17, 17),
                         metavar=("COLS", "ROWS"),
                         help="Inner-corner count (default 17 17 = the dedicated 18x18-square "
@@ -399,15 +526,46 @@ def main():
         sys.exit(f"{archive_dir} already exists -- pass a different sample name, or "
                  f"clear that folder if it's stale.")
 
-    dark_path = Path(args.dark)
-    print(f"Loading dark reference from {dark_path} ...")
-    if dark_path.is_file() and dark_path.suffix == ".npy":
-        dark_cube = np.load(dark_path)
+    dark_raw_path = Path(args.dark_raw) if args.dark_raw else find_sample_dir(DEFAULT_DARK_RAWS_DIR, args.sample)
+    print(f"Loading dark-for-image reference from {dark_raw_path} ...")
+    if dark_raw_path.is_file() and dark_raw_path.suffix == ".npy":
+        dark_raw_cube = np.load(dark_raw_path)
     else:
-        dark_cube = stitch(dark_path)
-    print(f"  shape {dark_cube.shape}, dtype {dark_cube.dtype}")
+        dark_raw_cube = stitch(dark_raw_path)
+    print(f"  shape {dark_raw_cube.shape}, dtype {dark_raw_cube.dtype}")
 
-    frame = mean_frame(dark_cube)
+    dark_raw_frame = mean_frame(dark_raw_cube)
+
+    if args.white_correct:
+        dark_white_path = Path(args.dark_white) if args.dark_white else find_sample_dir(DEFAULT_DARK_WHITES_DIR, args.sample)
+        print(f"Loading dark-for-white reference from {dark_white_path} ...")
+        if dark_white_path.is_file() and dark_white_path.suffix == ".npy":
+            dark_white_cube = np.load(dark_white_path)
+        else:
+            dark_white_cube = stitch(dark_white_path)
+        print(f"  shape {dark_white_cube.shape}, dtype {dark_white_cube.dtype}")
+
+        dark_white_frame = mean_frame(dark_white_cube)
+
+        if args.exposure_scale is not None:
+            exposure_scale = args.exposure_scale
+            print(f"Using manual exposure scale x{exposure_scale:.4f} (auto-detection skipped).")
+        else:
+            image_exposure = parse_exposure(dark_raw_path.stem)
+            white_exposure = parse_exposure(dark_white_path.stem)
+            if image_exposure is None or white_exposure is None:
+                sys.exit(f"Could not parse exposure from {dark_raw_path.name!r} and/or "
+                          f"{dark_white_path.name!r} (expected a trailing _<n> or _<n>k, e.g. "
+                          f"_125k) -- pass --exposure-scale to set the image/white exposure "
+                          f"ratio manually.")
+            exposure_scale = image_exposure / white_exposure
+            print(f"Exposure scale: image {image_exposure} / white {white_exposure} = "
+                  f"x{exposure_scale:.4f} (white reference will be scaled up to match the "
+                  f"grain scan's higher exposure).")
+    else:
+        print("Skipping white-capture ratio correction (stage 4) -- off by default until a white "
+              "reference captured through the same optical path (e.g. an empty tray) is available. "
+              "Pass --white-correct to use the current straight-beam white capture anyway.")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out_img_dir.mkdir(parents=True, exist_ok=True)
@@ -420,41 +578,51 @@ def main():
         grain_cube = stitch(grain_path)
     print(f"  shape {grain_cube.shape}, dtype {grain_cube.dtype}")
 
-    darksub, n_clipped = apply_dark_correction(grain_cube, frame)
+    darksub, n_clipped = apply_dark_correction(grain_cube, dark_raw_frame)
     clip_frac = n_clipped / grain_cube.size
     print(f"Applied dark subtraction ({n_clipped} px clipped at 0, {100 * clip_frac:.3f}%).")
 
     del grain_cube  # ~2.5GB for this capture; nothing after this point needs the raw cube
 
-    white_path = Path(args.white) if args.white else Path(DEFAULT_WHITE_DIR) / args.sample
-    print(f"Loading white reference from {white_path} ...")
-    if white_path.is_file() and white_path.suffix == ".npy":
-        white_cube = np.load(white_path)
+    if args.white_correct:
+        white_path = Path(args.white) if args.white else find_sample_dir(DEFAULT_WHITE_DIR, args.sample)
+        print(f"Loading white reference from {white_path} ...")
+        if white_path.is_file() and white_path.suffix == ".npy":
+            white_cube = np.load(white_path)
+        else:
+            white_cube = stitch(white_path)
+        print(f"  shape {white_cube.shape}, dtype {white_cube.dtype}")
+
+        white_frame_raw = mean_frame(white_cube)
+        del white_cube
+
+        white_diff = white_frame_raw - dark_white_frame
+        n_clipped_white = int((white_diff < 0).sum())
+        clip_frac_white = n_clipped_white / white_diff.size
+        print(f"Applied dark subtraction to white reference ({n_clipped_white} px clipped at 0, "
+              f"{100 * clip_frac_white:.3f}%).")
+        white_frame = np.clip(white_diff, 0, None)
+
+        n_bad_ref = int((white_frame <= 0).sum())
+        if n_bad_ref:
+            print(f"  warning: white reference has {n_bad_ref}/{white_frame.size} non-positive entries "
+                  f"(dividing by these would produce inf/nan) -- treating those (pixel, band) positions "
+                  f"as uncorrected (white reference set to 1.0 there) rather than aborting.")
+            white_frame[white_frame <= 0] = 1.0
+
+        # Scale after the fallback so the literal 1.0 above lands in the same
+        # (image-exposure-referred) unit space as every other entry, instead of
+        # being ~exposure_scale too small relative to them.
+        white_frame *= exposure_scale
+
+        reflectance = apply_white_correction(darksub, white_frame)
+        del darksub  # superseded by reflectance; nothing after this needs it
+        print(f"Reflectance: min {reflectance.min():.4f}, max {reflectance.max():.4f}, "
+              f"mean {reflectance.mean():.4f}")
     else:
-        white_cube = stitch(white_path)
-    print(f"  shape {white_cube.shape}, dtype {white_cube.dtype}")
-
-    white_frame_raw = mean_frame(white_cube)
-    del white_cube
-
-    white_diff = white_frame_raw - frame
-    n_clipped_white = int((white_diff < 0).sum())
-    clip_frac_white = n_clipped_white / white_diff.size
-    print(f"Applied dark subtraction to white reference ({n_clipped_white} px clipped at 0, "
-          f"{100 * clip_frac_white:.3f}%).")
-    white_frame = np.clip(white_diff, 0, None)
-
-    n_bad_ref = int((white_frame <= 0).sum())
-    if n_bad_ref:
-        print(f"  warning: white reference has {n_bad_ref}/{white_frame.size} non-positive entries "
-              f"(dividing by these would produce inf/nan) -- treating those (pixel, band) positions "
-              f"as uncorrected (white reference set to 1.0 there) rather than aborting.")
-        white_frame[white_frame <= 0] = 1.0
-
-    reflectance = apply_white_correction(darksub, white_frame)
-    del darksub  # superseded by reflectance; nothing after this needs it
-    print(f"Reflectance: min {reflectance.min():.4f}, max {reflectance.max():.4f}, "
-          f"mean {reflectance.mean():.4f}")
+        reflectance = darksub
+        print(f"Dark-subtracted signal (no white correction): min {reflectance.min()}, "
+              f"max {reflectance.max()}, mean {reflectance.mean():.4f}")
 
     if args.manual_scale is not None:
         fx, fy = args.manual_scale, 1.0

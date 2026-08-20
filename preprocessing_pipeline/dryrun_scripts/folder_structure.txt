@@ -1,0 +1,28 @@
+folder_structure.txt
+
+
+raw_image
+
+preview
+Png file. transmittance_day1_dish5_ventral.png for example.
+
+transmittance_images
+Day
+Dish 
+Ventral 
+Numpy file. capture.npy for example 
+reflectance_images 
+
+transmittance_scripts
+
+reflectance_scripts
+
+raw_binaries  
+Day
+Dish 
+Ventral 
+.bin file. capture.bin for example.
+
+process.py
+config.py
+

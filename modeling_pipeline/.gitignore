@@ -1,0 +1,38 @@
+# Derived from the cubes + annotations by build_dataset.py (~14 GB).
+# Regenerate, do not version: `python3 build_dataset.py`.
+# NOTE timing.json is NOT in here -- it is a hand-acquired input and lives at
+# the repo root so it gets versioned.
+dataset/
+dataset_*/
+
+# Training outputs and check reports; both are reproducible from a dataset
+# plus the run config recorded inside each JSON.
+runs/
+reports/
+
+# The annotation PNGs are 300 renders derived from the cubes (~75 MB). The COCO
+# file itself IS versioned -- it is hand-drawn work that cannot be regenerated.
+annotations/preview_coco/
+
+# Germination scoring photos: ~200 HEIC files straight off the camera.
+# NOTE: this pattern also hides index_reference_{dorsal,ventral}.png, which are
+# the labeller's only key to the #0-#21 well numbering and cannot be
+# regenerated from anything in this repo. Track those two explicitly:
+#   git add -f labels/germination_photos/index_reference_*.png
+labels/germination_photos/
+
+.venv/
+__pycache__/
+*.pyc
+
+# 200 capture sheets (~120 MB) rendered from the dataset by review_masks.py.
+# Regenerate, do not version: `python3 review_masks.py`.
+mask_review/
+
+# Guard: a 75 GB byte-identical copy of ../real_data/ once landed here,
+# reorganised by hours. Deleted 2026-08-20. Nothing in this repo reads cubes
+# from inside modeling_pipeline -- they are loaded from ../real_data via the
+# `source` path in each capture_meta.json. Keep these patterns so a re-copy
+# never gets staged.
+reflectance_images/
+transmittance_images/
