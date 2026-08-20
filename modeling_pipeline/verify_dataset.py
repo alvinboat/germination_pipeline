@@ -129,12 +129,13 @@ def check_assignment(rep, rows):
 
 def check_frame(rep, rows):
     """The cube slice must equal gridfit's own working-frame reference."""
-    src = sorted({r["source"] for r in rows})[0]
-    from pathlib import Path
-    cube = np.load(Path(src) / "capture.npy", mmap_mode="r")
+    # Re-anchored: index.csv records the absolute path from the machine that
+    # built the dataset, which is not necessarily this one.
+    src = config.local_capture_dir(sorted({r["source"] for r in rows})[0])
+    cube = np.load(src / "capture.npy", mmap_mode="r")
     try:
         extract.verify_frame(cube, cube.shape[0])
-        rep.check("cube slice agrees with gridfit.render.to_working", True, src)
+        rep.check("cube slice agrees with gridfit.render.to_working", True, str(src))
     except SystemExit as e:
         rep.check("cube slice agrees with gridfit.render.to_working", False, str(e))
 

@@ -26,6 +26,7 @@ move, and a well that holds a kernel on day 1 must still hold one on day 9.
 import argparse
 import csv
 import json
+import os
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -39,7 +40,10 @@ sys.path.insert(0, str(ROOT))
 
 from gridfit import cells as cellmod, fit_capture, overlay, plate   # noqa: E402
 
-DEFAULT_DATA = Path("/home/alvin/07012026-Initial/real_data")
+# Derived from this file's location, not hard-coded: the checkout moves.
+# Override with BARLEY_CAPTURE_ROOT or --data.
+DEFAULT_DATA = Path(os.environ.get("BARLEY_CAPTURE_ROOT")
+                    or Path(__file__).resolve().parents[2]) / "real_data"
 MODES = ("reflectance", "transmittance")
 SIDES = ("dorsal", "ventral")
 THUMB_W = 260

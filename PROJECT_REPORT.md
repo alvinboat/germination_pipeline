@@ -794,6 +794,7 @@ adding scikit-learn and torch runs the trainers.
 ## 16. Repository map
 
 ```
+germination_pipeline/          the repository root
 PROJECT_REPORT.md            this document
 CLAUDE.md                    orientation for agentic tooling
 preprocessing_pipeline/

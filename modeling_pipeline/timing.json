@@ -1,12 +1,12 @@
 {
  "generated": "2026-08-20T12:12:37+02:00",
- "provenance": "Acquired once, on 2026-08-20, and NOT REPRODUCIBLE from anything in this repo. Capture times came from file mtimes on the acquisition machine (foss-research-jetson-4, /home/fossdev/data/collection_pipeline), read by a capture_times.sh that has since been removed along with its output; visit times came from EXIF DateTimeOriginal on labels/germination_photos. Treat this file the way you treat germination_label_annotator.xlsx: a hand-acquired input, versioned, never regenerated. To rebuild it you would have to go back to the Jetson.",
+ "provenance": "Acquired once, on 2026-08-20, and NOT REPRODUCIBLE from anything in this repo. Capture times came from file mtimes on the acquisition machine (foss-research-jetson-4, /home/fossdev/data/collection_pipeline), read by a capture_times.sh that has since been removed along with its output (the paths under sources/ moved with the checkout when it was renamed 07012026-Initial -> germination_pipeline on 2026-08-20); visit times came from EXIF DateTimeOriginal on labels/germination_photos. Treat this file the way you treat germination_label_annotator.xlsx: a hand-acquired input, versioned, never regenerated. To rebuild it you would have to go back to the Jetson.",
  "timezone": "+02:00 (Europe/Copenhagen, DST)",
  "t0_definition": "the dish's own day1 reflectance scan -- dry, immediately before wetting. A lower bound on the wetting moment.",
  "sources": {
-  "reflectance_times": "/home/alvin/07012026-Initial/modeling_pipeline/reflectance_images_times.txt",
+  "reflectance_times": "/home/alvin/germination_pipeline/modeling_pipeline/reflectance_images_times.txt",
   "transmittance_times": "MISSING",
-  "photos": "/home/alvin/07012026-Initial/modeling_pipeline/labels/germination_photos"
+  "photos": "/home/alvin/germination_pipeline/modeling_pipeline/labels/germination_photos"
  },
  "transmittance_capture_times": "proxy_reflectance",
  "t0_by_dish": {

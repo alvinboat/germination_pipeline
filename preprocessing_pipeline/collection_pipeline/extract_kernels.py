@@ -39,6 +39,7 @@ Nothing downstream should sort on the folder name; the manifest carries `hours`.
 import argparse
 import csv
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -156,6 +157,22 @@ def radiometry(src):
     return ob.get("median")
 
 
+def _capture_dir(recorded):
+    """A path recorded by gridfit -> the same capture in THIS checkout.
+
+    cells.json stores the absolute path of the cube it was fitted on, from
+    whichever machine ran the fit. Keep everything from the `real_data`
+    component onwards and re-root it here, so a moved checkout still resolves.
+    """
+    p = Path(recorded)
+    root = Path(os.environ.get("BARLEY_CAPTURE_ROOT")
+                or Path(__file__).resolve().parents[2])
+    for i, part in enumerate(p.parts):
+        if part == "real_data":
+            return root.joinpath(*p.parts[i:])
+    return p
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -202,12 +219,13 @@ def main():
     checked = False
     for n, rec in enumerate(recs, 1):
         c = rec["capture"]
-        cube = np.load(Path(c["source"]) / "capture.npy", mmap_mode="r")
+        cdir = _capture_dir(c["source"])
+        cube = np.load(cdir / "capture.npy", mmap_mode="r")
         width = cube.shape[0]
         sat = None
         if c["mode"] == "transmittance":
-            sat = np.load(Path(c["source"]) / "capture_masks.npz")["saturated"]
-        ob = radiometry(c["source"]) if c["mode"] == "transmittance" else None
+            sat = np.load(cdir / "capture_masks.npz")["saturated"]
+        ob = radiometry(cdir) if c["mode"] == "transmittance" else None
         ok = ob is None or (OPEN_BEAM_OK[0] <= ob <= OPEN_BEAM_OK[1])
 
         if not checked:

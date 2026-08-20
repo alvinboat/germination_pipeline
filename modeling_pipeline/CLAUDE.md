@@ -72,7 +72,8 @@ derives from those. The tree relocates as long as `modeling_pipeline/`,
 `preprocessing_pipeline/` and `real_data/` stay siblings.
 
 **One trap, already defused.** All 300 `grid_view/*/cells.json` files record the
-absolute path of the cube they were fitted on — `/home/alvin/07012026-Initial/...`
+absolute path of the cube they were fitted on, from whichever machine and
+whichever checkout name ran the fit
 — from whichever machine ran the fit. A different user or disk would send
 `build_dataset.py` at a directory that does not exist. Both readers now go
 through `config.local_capture_dir()`, which keeps everything from the
