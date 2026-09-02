@@ -9,17 +9,14 @@
 
 # --------------------------------------------------------- capture data ---
 # real_data/  corrected cubes, 163 GB -- the modelling input
-# data/       early exploratory captures
+# the rest    early exploratory captures, kept beside the checkout
 real_data/
 data/
 archive/
 07012026/
 
-# Image trees inside the preprocessing pipelines: raw lines, corrected cubes,
+# Image trees inside the preprocessing pipeline: raw lines, corrected cubes,
 # previews, per-capture renders. Regenerable from the raw archive, and large.
-preprocessing_pipeline/storage_image/
-preprocessing_pipeline/7222026_export/
-preprocessing_pipeline/slit_diffuse/
 **/raw_image/
 **/raw_binaries/
 **/preview/
@@ -27,10 +24,7 @@ preprocessing_pipeline/slit_diffuse/
 **/reflectance_images/
 **/transmittance_images/
 **/grid_view/
-**/corrected_file/
-**/corrected_image/
 **/calibration/
-**/stitched/
 
 # ---------------------------------------------- data files, anywhere ------
 *.npy

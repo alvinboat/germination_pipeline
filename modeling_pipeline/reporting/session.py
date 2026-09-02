@@ -18,7 +18,7 @@ diff six months from now.
 import numpy as np
 
 import config
-from barley import index as index_mod, metrics, tasks
+from barley import index as index_mod, tasks
 from . import figures as F
 from . import style as S
 

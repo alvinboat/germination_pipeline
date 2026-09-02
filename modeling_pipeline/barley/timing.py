@@ -29,7 +29,6 @@ last visit, which lands anywhere from 120.9 to 128.6 h, not at 120.
 Nothing here overrides `config`. The nominal values stay where they are and stay
 correct as a description of the protocol; this is what the protocol produced.
 """
-import csv
 import datetime as dt
 import json
 
@@ -63,16 +62,16 @@ def load(path=None):
     return _CACHE
 
 
-def reset_cache():
-    global _CACHE
-    _CACHE = None
-
-
 def t0(dish):
     """The dish's zero: its own day1 dry scan, immediately before wetting."""
     return dt.datetime.fromisoformat(load()["t0_by_dish"][str(int(dish))])
 
 
+# The three lookups below have no caller in this repo, and that is deliberate.
+# `attach()` builds the same columns in bulk for Index.load, and the
+# germination-TIME models that consumed `intervals()` were deleted -- the
+# measured brackets they encode are the thing that survived that deletion.
+# They are the query API for ad-hoc work and for any future timing model.
 def capture_hours(mode, day, dish, side):
     """Measured hours between the dish's t0 and this capture. NaN if unknown.
 

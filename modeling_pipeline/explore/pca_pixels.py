@@ -31,7 +31,6 @@ import argparse
 import csv
 import sys
 import time
-from collections import defaultdict
 from pathlib import Path
 
 import cv2
@@ -40,9 +39,6 @@ import numpy as np
 
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt              # noqa: E402
-
-import sys
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -363,11 +359,13 @@ def write_summary(out, results, px):
           "hard rim shadow to mix into. It is the mode whose masks can be "
           "trusted at the edge.", "",
           "## what follows from it", "",
-          "* `config.MASK_ERODE_PX` is currently off, on the grounds that 2 px "
-          "cost a median 23.5% of mask area for a contaminant nobody had "
-          "measured. The contaminant is now measured, and in reflectance it is "
-          "about half of all voxel variance. That trade is worth revisiting — "
-          "for reflectance specifically.",
+          f"* `config.MASK_ERODE_PX` is currently "
+          f"{'off' if not config.MASK_ERODE_PX else str(config.MASK_ERODE_PX) + ' px'}"
+          ". It was held back on the grounds that 2 px cost a median 23.5% of "
+          "mask area for a contaminant nobody had measured. The contaminant is "
+          "now measured, and in reflectance it is about half of all voxel "
+          "variance. That trade is worth revisiting — for reflectance "
+          "specifically.",
           "* The case for per-pixel modelling is weaker than the raw "
           "within-kernel share suggests. Once the boundary is removed, "
           "reflectance at 8 h and both transmittance matrices are majority "

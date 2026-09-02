@@ -19,7 +19,7 @@ import numpy as np
 import config
 from . import coco
 
-sys.path.insert(0, str(config.COLLECTION))
+sys.path.insert(0, str(config.PREPROCESSING))
 from gridfit import cells as gcells  # noqa: E402
 
 MIN_CONTAINMENT = 0.50      # a mask must sit at least this far inside one cell

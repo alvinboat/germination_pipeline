@@ -53,15 +53,6 @@ def to_cube_mask(mask):
     return cv2.rotate(mask.astype(np.uint8), cv2.ROTATE_90_COUNTERCLOCKWISE).astype(bool)
 
 
-def to_cube_image(img):
-    """Same rotation as to_cube_mask, for a label/grey image rather than a mask."""
-    return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-
-
-def to_cube_xy(x, y, width):
-    """Working-frame point -> (spatial, line) index pair into the cube."""
-    return width - 1 - x, y
-
 
 # ------------------------------------------------------------------ renders --
 def _stretch(v, pop, lo_pct, hi_pct):

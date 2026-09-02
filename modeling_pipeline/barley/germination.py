@@ -24,7 +24,6 @@ time-to-germination regressor that used to live beside this was dropped -- see
 the note in CLAUDE.md.
 """
 import csv
-from collections import defaultdict
 
 import numpy as np
 
@@ -183,23 +182,22 @@ def first_day_array(idx, table):
     """
     return [table.get(u, UNSCORED) for u in idx["kernel_uid"]]
 
+
 class _Unscored:
     __slots__ = ()
 
     def __repr__(self):
         return "UNSCORED"
 
+
+UNSCORED = _Unscored()
+
+
 def _table(path=None):
     global _TABLE
     if _TABLE is None:
         _TABLE = read_germination_labels(path)
     return _TABLE
-
-def reset_cache():
-    """Forget the parsed CSV. For tests that swap the file underneath."""
-    global _TABLE
-    
-UNSCORED = _Unscored()
 
 
 # --------------------------------------------------------------- the folds --

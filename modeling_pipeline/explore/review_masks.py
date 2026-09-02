@@ -30,7 +30,6 @@ it comes from gridfit's own render cache, keyed to the cube's size and mtime.
 """
 import argparse
 import csv
-import json
 import sys
 import time
 from collections import Counter, defaultdict
@@ -44,9 +43,6 @@ matplotlib.use("Agg")
 from matplotlib import pyplot as plt              # noqa: E402
 from matplotlib.patches import Polygon           # noqa: E402
 
-import sys
-from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config                                     # noqa: E402
@@ -54,7 +50,7 @@ from barley import assign, coco, extract, germination    # noqa: E402
 from barley import index as index_mod             # noqa: E402
 from reporting import style as S                  # noqa: E402
 
-sys.path.insert(0, str(config.COLLECTION))
+sys.path.insert(0, str(config.PREPROCESSING))
 from gridfit import render                        # noqa: E402
 
 PLATE_ROWS, PLATE_COLS = 4, 7

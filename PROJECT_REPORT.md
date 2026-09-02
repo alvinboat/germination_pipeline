@@ -762,7 +762,7 @@ Ordered by how much they should temper the conclusions.
 
 ## 15. Reproducing this
 
-The repository tracks code and small irreplaceable inputs — 159 files, ~10 MB.
+The repository tracks code and small irreplaceable inputs — 101 files, ~10 MB.
 It does not track capture data.
 
 **Not in the repository:**
@@ -770,9 +770,9 @@ It does not track capture data.
 | | size | needed for | regenerable |
 |---|---|---|---|
 | `real_data/` — corrected cubes | 163 GB | building the dataset, the gate, mask review | **no** |
-| `modeling_pipeline/dataset/` | 13 GB | all modelling | yes, from the cubes, ~4 min |
-| `grid_view/` — the fitted lattice | 348 MB | building the dataset | yes, from the cubes |
-| `preview_coco/` — annotation renders | 75 MB | nothing at runtime | yes |
+| `modeling_pipeline/dataset/` | 13 GB | all modelling | yes, from the cubes, ~5 min |
+| `preprocessing_pipeline/grid_view/` — the fitted lattice | 348 MB | building the dataset | yes, from the cubes |
+| `annotations/preview_coco/` — annotation renders | 75 MB | nothing at runtime | no — its generator was lost (§16) |
 | `labels/germination_photos/` | 464 MB | nothing now — EXIF already extracted | **no** (primary evidence) |
 
 **In the repository and irreplaceable:** the CVAT mask export
@@ -795,26 +795,25 @@ adding scikit-learn and torch runs the trainers.
 
 ```
 germination_pipeline/          the repository root
+README.md                    the map and the run commands
 PROJECT_REPORT.md            this document
-CLAUDE.md                    orientation for agentic tooling
+CLAUDE.md                    the footguns, for agentic tooling
 preprocessing_pipeline/
-  collection_pipeline/       THE production path
-    config.py                four per-capture variables + rig configuration
-    process.py               one capture, start to finish
-    common.py                stitching, raw archive, calibration cache, geometry
-    reflectance_scripts/     the reflectance correction
-    transmittance_scripts/   the transmittance correction
-    gridfit/                 plate model, fiducial detection, lattice fit
-    grid_index.py            fit every capture -> grid_view/
-    loadstich/               the Mono12Packed codec
-  dryrun_scripts/            the earlier pipeline the above was validated against
-  <other>/                   superseded exploratory pipelines, kept for reference
+  config.py                  four per-capture variables + rig configuration
+  process.py                 one capture, start to finish
+  common.py                  stitching, raw archive, calibration cache, geometry
+  reflectance_scripts/       the reflectance correction
+  transmittance_scripts/     the transmittance correction
+  gridfit/                   plate model, fiducial detection, lattice fit
+  grid_index.py              fit every capture -> grid_view/
+  loadstich/                 the Mono12Packed codec
 modeling_pipeline/
   build_dataset.py           cubes + masks + lattice -> dataset/
   verify_dataset.py          the 24-check gate
   train_germination.py       the binary germination model
   train_pls.py               PLS-DA, the variety track
   train_cnn.py               ResNet-18 with a spectral stem, either track
+  report_run.py              rebuild a run's report from its saved predictions
   barley/                    library: index, labels, timing, splits, metrics, models
   explore/                   mask review, label histograms, the two PCA scripts
   reporting/                 figure style and report assembly
@@ -824,9 +823,22 @@ modeling_pipeline/
   exploration/               finished figures + their summary.md files
 ```
 
-Every generated folder carries a `summary.md` restating every number in its
-figures. The most useful entry points for a reader are
-`modeling_pipeline/reports/germ5/summary.md` (the germination model),
-`modeling_pipeline/exploration/pca/mean_spectra/summary.md` (the confound
-analysis) and `modeling_pipeline/exploration/germination/summary.md` (the
-labels).
+**What is not here.** Two things this report describes have no code in the tree.
+The earlier dry-run pipelines that the corrections in §5 were validated
+bit-identical against were removed once they had served that purpose; `git show
+bb4b05e` has them, along with several superseded exploratory pipelines.
+`preview_coco/generate.py`, which rendered the annotation PNGs and enforced the
+frame contract of §7, was lost in the consolidation and is not recoverable from
+git. The 5,456 masks are unaffected, and the contract it enforced is still
+re-checked on every dataset build by `verify_dataset.py`; only re-rendering the
+annotation images would need it rewritten.
+
+**Where the numbers live.** Every generated folder carries a `summary.md`
+restating every number in its figures. Two are in the repository and are the best
+entry points for a reader: `modeling_pipeline/exploration/pca/mean_spectra/summary.md`
+(the confound analysis) and `modeling_pipeline/exploration/germination/summary.md`
+(the labels). The germination model's own report, `modeling_pipeline/reports/germ5/`,
+is a build product and is gitignored — regenerate it with
+`.venv/bin/python train_germination.py`, which needs `dataset/`. **This document
+is the authority for every model number**; where an older `summary.md` disagrees,
+it predates the run reported here.

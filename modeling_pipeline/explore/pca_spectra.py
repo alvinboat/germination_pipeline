@@ -30,7 +30,6 @@ between varieties. If the two are equal, the component is reading the plate.
 import argparse
 import csv
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 import matplotlib
@@ -38,9 +37,6 @@ import numpy as np
 
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt              # noqa: E402
-
-import sys
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

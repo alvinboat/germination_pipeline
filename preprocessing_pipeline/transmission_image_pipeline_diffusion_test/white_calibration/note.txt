@@ -1,1 +1,0 @@
-capture slit diffuse white at a reasonable exposure + it's associated dark reference

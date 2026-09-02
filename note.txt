@@ -1,8 +1,0 @@
-- axe dud variety 
-time intervals
-- histograms of germination time
-- pca 
-    - both per variety + global
-
-classifier (germinated or nah)
-regressor (germination time)

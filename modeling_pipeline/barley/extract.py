@@ -27,7 +27,7 @@ import numpy as np
 import config
 from . import coco
 
-sys.path.insert(0, str(config.COLLECTION))
+sys.path.insert(0, str(config.PREPROCESSING))
 from gridfit import render  # noqa: E402
 
 

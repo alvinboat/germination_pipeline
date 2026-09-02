@@ -12,8 +12,8 @@ REPO = ROOT.parent
 # ------------------------------------------------------------------- inputs --
 COCO_JSON = ROOT / "annotations" / "instances_default.json"
 PREVIEW_DIR = ROOT / "annotations" / "preview_coco"
-GRID_VIEW = REPO / "preprocessing_pipeline" / "collection_pipeline" / "grid_view"
-COLLECTION = REPO / "preprocessing_pipeline" / "collection_pipeline"
+PREPROCESSING = REPO / "preprocessing_pipeline"   # the gridfit package lives here
+GRID_VIEW = PREPROCESSING / "grid_view"           # its fitted lattice, one dir per capture
 # The annotator's spreadsheet is the source of truth. A .csv with
 # kernel_uid,first_germinated_day columns is also accepted -- see
 # barley.germination.read_germination_labels. Overridable by env var so a
@@ -45,7 +45,6 @@ MASKS_NPY = DATASET / "masks.npy"
 SPECTRA_NPY = DATASET / "spectra.npy"
 INDEX_CSV = DATASET / "index.csv"
 BANDS_JSON = DATASET / "bands.json"
-BUILD_META = DATASET / "build_meta.json"
 SPLITS_JSON = DATASET / "splits.json"
 
 # -------------------------------------------------------------------- scope --
@@ -139,8 +138,8 @@ PATCH_H, PATCH_W = 128, 64      # rows follow the plate's row axis
 # Scale applied to the cell quad before warping it onto the patch. 1.0 is the
 # cell exactly as gridfit drew it; >1 pads outwards.
 #
-# extract_kernels.py insets by 0.15 instead, because it samples well brightness
-# and has to keep the bright wall out. Here the annotator's mask already decides
+# An earlier extractor inset by 0.15 instead, because it sampled well brightness
+# and had to keep the bright wall out. Here the annotator's mask already decides
 # what is kernel, so an inset buys nothing and costs real signal: the kernels sit
 # about 0.27 cell-widths off-centre in their wells (the retaining clip holds them
 # to one side), so a 15% inset slices straight through the grain. The pad
@@ -149,21 +148,26 @@ PATCH_H, PATCH_W = 128, 64      # rows follow the plate's row axis
 CELL_SCALE = 1.10
 
 # Erosion of the mask boundary, in annotation pixels, applied in cube layout
-# before the warp. Intended to keep a clipped sliver of the plastic retaining
-# clip out of the kernel's spectrum.
+# before the warp (barley.assign, which treats any non-zero value as on).
+# Intended to keep a clipped sliver of the plastic retaining clip out of the
+# kernel's spectrum.
 #
-# Currently OFF. At 2 px it cost a median 23.5% of mask area (worst 33.8%) --
-# too much of the grain to pay for a contaminant that the masks may not actually
-# contain. Revisit after the masks are fact-checked: if specific masks turn out
-# to include clip, fixing those masks is better than shrinking all 4381.
+# 2 px was rejected: it cost a median 23.5% of mask area (worst 33.8%), too much
+# of the grain to pay for a contaminant that the masks may not actually contain.
+# The per-pixel PCA has since measured that contaminant -- in reflectance it is
+# ~half of all voxel variance -- so the trade is worth revisiting for that mode.
+#
+# UNRESOLVED: this value is 1, but PROJECT_REPORT.md and both READMEs describe
+# erosion as "off". Which one the published dataset was built with is recorded
+# in `dataset/build_meta.json` ("mask_erode_px"), and that file is the authority
+# -- `verify_dataset.py` prints it on every run. Reconcile before quoting either
+# the erosion setting or a number that depends on it.
 MASK_ERODE_PX = 1
 
 # Pseudo-absorbance floor. Transmittance reaches -0.0005 on real captures and a
 # reflectance voxel can be exactly 0 after dark subtraction; both make log10
 # undefined. 1e-4 caps absorbance at 4.0, well above the observed range.
 ABSORBANCE_EPS = 1e-4
-
-OPEN_BEAM_OK = (0.8, 1.25)      # transmittance radiometry sanity band
 
 SEED = 20260817
 N_FOLDS = 5

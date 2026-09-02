@@ -40,10 +40,12 @@ sys.path.insert(0, str(ROOT))
 
 from gridfit import cells as cellmod, fit_capture, overlay, plate   # noqa: E402
 
-# Derived from this file's location, not hard-coded: the checkout moves.
+# Derived from this file's location, not hard-coded: the checkout moves. The
+# cubes sit beside the checkout, so the anchor is the repo root -- ROOT.parent,
+# named rather than counted, because a depth count silently breaks if this file
+# is ever moved a level.
 # Override with BARLEY_CAPTURE_ROOT or --data.
-DEFAULT_DATA = Path(os.environ.get("BARLEY_CAPTURE_ROOT")
-                    or Path(__file__).resolve().parents[2]) / "real_data"
+DEFAULT_DATA = Path(os.environ.get("BARLEY_CAPTURE_ROOT") or ROOT.parent) / "real_data"
 MODES = ("reflectance", "transmittance")
 SIDES = ("dorsal", "ventral")
 THUMB_W = 260

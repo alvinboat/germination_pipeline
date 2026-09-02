@@ -69,23 +69,3 @@ class SpectralResNet18(nn.Module):
 
 def build(n_channels, n_classes, **kw):
     return SpectralResNet18(n_channels, n_classes, **kw)
-
-
-class BandDropout(nn.Module):
-    """Zero whole spectral bands at random.
-
-    The spatial dropout analogue for a hyperspectral cube: neighbouring bands
-    are highly correlated, so dropping single voxels teaches the network very
-    little, while dropping a band forces it to spread its evidence across the
-    spectrum instead of latching onto one wavelength.
-    """
-
-    def __init__(self, p=0.1):
-        super().__init__()
-        self.p = p
-
-    def forward(self, x):
-        if not self.training or self.p <= 0:
-            return x
-        keep = (torch.rand(x.shape[0], x.shape[1], 1, 1, device=x.device) >= self.p)
-        return x * keep / (1 - self.p)

@@ -48,9 +48,6 @@ import numpy as np
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt              # noqa: E402
 
-import sys
-from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config                                     # noqa: E402
@@ -59,7 +56,6 @@ from reporting import style as S                  # noqa: E402
 
 EVENT_INK = 0       # categorical slot for a germination-day bar
 NEVER_INK = 1       # ... and for the censored bar, which is not a time
-GAP = 0.6           # blank x-units between day 5 and `never`
 
 
 # --------------------------------------------------------------------- data --

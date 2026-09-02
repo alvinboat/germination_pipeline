@@ -21,7 +21,6 @@ uses this module:
   restated in summary.md.
 """
 import matplotlib as mpl
-import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 
 # Categorical slots, in fixed order. Never cycle past the list.
@@ -157,9 +156,3 @@ def hide_grid_x(ax):
 
 def hide_grid_y(ax):
     ax.grid(axis="y", visible=False)
-
-
-def nice_ylim(ax, values, floor=0.0, pad=0.08):
-    lo, hi = float(np.min(values)), float(np.max(values))
-    span = max(hi - lo, 0.05)
-    ax.set_ylim(max(floor, lo - pad * span), min(1.0, hi + pad * span))
