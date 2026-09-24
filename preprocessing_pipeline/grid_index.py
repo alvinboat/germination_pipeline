@@ -442,7 +442,7 @@ def main():
     print("=" * 78)
     for k, v in tracking["by_status"].items():
         print(f"  {k:14s} {v}")
-    print(f"  handedness: " + "; ".join(
+    print("  handedness: " + "; ".join(
         f"{s} {dict(v)}" for s, v in sorted(tracking["chirality_by_side"].items())))
     print(f"  dishes with no exception: {tracking['dishes_clean']}/{tracking['dishes_total']}")
     print(f"  summary : {out_root / 'summary.csv'}")

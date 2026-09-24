@@ -45,6 +45,13 @@ archive/
 !modeling_pipeline/exploration/**/*.png
 !**/index_reference_*.png
 
+# ------------------------------------------------------- private notes ---
+# specs.txt is a personal study/interview reference for this pipeline -- the
+# whole thing in 31 cards, with the tooling explained. It duplicates and
+# informally restates PROJECT_REPORT.md, so it is deliberately not published:
+# there must be exactly one public place to correct a number.
+specs.txt
+
 # --------------------------------------------------------- environments ---
 .venv/
 venv/

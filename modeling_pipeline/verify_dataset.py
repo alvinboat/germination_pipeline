@@ -304,7 +304,7 @@ def check_germination(rep, rows, path=None):
              + (f" ({', '.join(sorted(none_, key=lambda s: int(s[4:])))})"
                 if none_ else ""))
     if partial:
-        rep.note(f"  partly scored: "
+        rep.note("  partly scored: "
                  + ", ".join(f"{d} {per_dish_scored[d]}/{per_dish_total[d]}"
                              for d in sorted(partial, key=lambda s: int(s[4:]))))
     rep.check("at least two dishes are scored, so folds can hold one out",

@@ -15,14 +15,30 @@ Yes, on three of the four varieties.
 | AUC comparing only kernels from the same dish | **0.813 ± 0.014** | 0.500 |
 | Permutation floor (labels shuffled between dishes) | 0.469 | — |
 
+The third row is the one that matters. Variety is perfectly confounded with
+dish here, and the plate turns out to be the largest single source of spectral
+variation in the data — so the headline number could in principle be earned by
+ranking plates rather than grain. Restricting every comparison to kernels that
+shared a dish removes that possibility, and the score goes **up**.
+
+![Unsupervised structure in the 8 h reflectance spectra](modeling_pipeline/exploration/pca/mean_spectra/scores_d0_reflectance_8h.png)
+
+*PCA of the 8 h reflectance spectra, no labels involved. Top right: the dish
+explains the layout. Bottom left: germination does not — there is no
+unsupervised germination axis anywhere in the data (η² never exceeds 0.081).
+That is expected, and it is why the supervised result needs a within-dish
+control to be worth anything.*
+
 **`PROJECT_REPORT.md` is the full account** — what was collected, corrected,
 labelled and modelled, every control, and what the numbers do and do not
 support. Read it first. This file is the map.
 
 ## Layout
 
-Two halves, with different conventions and different dependencies. Each has its
-own README.
+~11,500 lines of Python across two halves, with different conventions and
+different dependencies: 300 captures corrected and lattice-fitted, 5,456
+hand-drawn kernel masks resolved onto named wells, and a 24-check verification
+gate that everything downstream runs behind. Each half has its own README.
 
 ```
 preprocessing_pipeline/   raw camera lines -> corrected cubes -> a fitted plate lattice

@@ -52,8 +52,8 @@ class Task:
 # It is also perfectly confounded with dish. Every kernel of variety 1 is in
 # dishes 0-4 and nowhere else, so any dish-level artifact (plate, illumination,
 # capture session) is a *perfect* variety predictor. This is why group_col is
-# "dish" and why evaluate.py runs the dish-identity control: a random split here
-# would score near-perfect while learning nothing about barley.
+# "dish" and why `train_pls.py --controls` runs the dish-identity control: a
+# random split here would score near-perfect while learning nothing about barley.
 # Class ids are positions in `config.kept_varieties()`, not the raw variety
 # number. An excluded variety must not leave a hole in the numbering: PLS would
 # get a one-hot column that is always zero -- a class it can predict but never

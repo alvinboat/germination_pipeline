@@ -279,8 +279,8 @@ def main():
         w.writeheader()
         w.writerows(rows)
 
-    print(f"\nmax over PC1-3 of the share of a component's variance that sits "
-          f"between groups")
+    print("\nmax over PC1-3 of the share of a component's variance that sits "
+          "between groups")
     print(f"{'d':>2s} {'mode':13s} {'view':6s} {'PC1%':>6s} {'PC1-3%':>7s} | "
           f"{'dish':>6s} {'variety':>7s} {'germ':>6s} {'day':>6s} | "
           f"{'dish|var':>8s} {'day|var':>7s}")

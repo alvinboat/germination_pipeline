@@ -310,7 +310,7 @@ def main():
         w.writeheader()
         w.writerows(rows)
 
-    print(f"\nshare of each component's voxel variance that is BETWEEN kernels")
+    print("\nshare of each component's voxel variance that is BETWEEN kernels")
     print(f"{'d':>2s} {'mode':13s} {'h':>3s} {'erode':>5s} {'totvar':>7s} | " +
           " ".join(f"{'PC' + str(a + 1):>7s}" for a in range(4)))
     for (deriv, mode, hours, erode), r in sorted(results.items(), key=str):

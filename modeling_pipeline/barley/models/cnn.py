@@ -6,9 +6,10 @@ TWO CHANGES TO THE STOCK NETWORK
    offered as an alternative (see `stem="pca3"`): project 192 bands onto 3
    components and use the pretrained network unchanged. At 548 kernels that
    often beats a from-scratch 192-channel stem, and it costs one flag to try.
-2. The initial maxpool is dropped. Patches are 128x64, and the stock stem
-   (stride-2 conv then stride-2 pool) would reach a 2x1 final feature map;
-   without the pool it is 4x2, which leaves the network something to pool over.
+2. The initial maxpool is dropped. Patches are 128x64, and ResNet-18
+   downsamples 32x with the stock stem (conv1 /2, maxpool /2, then layer2,
+   layer3 and layer4 /2 each), reaching a 4x2 final feature map; without the
+   pool it is 16x and so 8x4, which leaves the network something to pool over.
 
 EXPECTATIONS
 548 kernels across 25 dishes is a small dataset for 11M parameters. PLS is a
